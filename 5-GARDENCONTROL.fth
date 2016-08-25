@@ -6,10 +6,8 @@
 \   dp, ky  151107 15:00 Changed the name of this module and file
 \                        to GardenControl.fth
 \   dp 160815         modifying code for new DLVR-L30D pressure sensor, Tachyon module and P8 board type
-\                     *****WIP*****
-\   dp 160821         modifying code for final testing
 \                     ready for testing, set defaults for new sensor  0.80
-\                     *****WIP*****
+\   dp 160824         updated to use DS3232M RTC Ram to save and restore runtime params  0.91
 
 TACHYON
 [~
@@ -20,7 +18,7 @@ IFNDEF DLVR-L30D.fth
 }
 
 FORGET GARDENCONTROL.fth
-pub  GARDENCONTROL.fth   PRINT" Garden Control P8 160823 1400 V0.90          " ;
+pub  GARDENCONTROL.fth   PRINT" Garden Control P8 160824 1400 V0.91          " ;
 
 { ***** equipment I/O assignments ********* }
 #P18 == flowp         --- flow pump
@@ -54,6 +52,11 @@ LONG lightflag       --- just turn on the fault light once
 LONG retryadc        --- counter to retry adc reading in task
 LONG _log            --- true false to display logging to screen
 LONG testm           --- on off flag for setting system in test mode
+WORD scntr           --- loop counter for keypoll pacing of state machine
+scntr W~              --- set it to 0
+WORD pcntr           --- loop counter for keypoll pacing of calls to PSI.GET from DLVR-L30D.fth module
+pcntr W~             --- set it to zeor
+LONG tanklevel       --- current tank level
 
 
 pub LOG? ( -- flag ) --- return logging flag on or off
@@ -71,7 +74,7 @@ pub g--   ( -- )    --- turn data logging to the screen off
 ;
 
 
-{ runtime structure stored in DS1302 RAM, max of 32 bytes }
+{ runtime structure stored in DS3132 EEPROM }
 TABLE runtime #31  ALLOT    \ allocate long aligned memory for #31 bytes
 runtime ORG    
     1 DS HALT      --- halt byte TRUE do not run
@@ -98,27 +101,35 @@ runtime ORG
     1 DS SENC      --- water sensor calibration
 
 
-{ testing stuff }
-WORD cntr              --- loop counter for keypoll pacing
-cntr W~                --- set to 0
-LONG  tanklevel        ---  testing var to simulate tank level
 
-{  new routine using RTC EEPROM }
-pub SETRUNTIME
-    ramlen 0 DO      
-      10 ms
-      runtime I + C@ $7.0000 I + EC!         --- write the runtime bytes to the eeprom
-    LOOP
+{  new routines to save and restore runtime to RTC ram }
+
+pub SETRUNTIME    \ Write ram/eeprom of RTC from runtime structure
+---    ramlen 0 DO    ---  for d23231
+---      10 ms
+---      runtime I + C@ $7.0000 I + EC!         --- write the runtime bytes to the ds3231 eeprom
+---    LOOP
+   \ Write runtime structure to ram of RTC 
+    @rtc 0 >
+    IF
+      I2CSTART @rtc I2C! $14 I2C!
+      runtime ramlen ADO I C@ I2C! LOOP
+      I2CSTOP
+    THEN
 ;
-}
 
-{  new routine using RTC EEPROM }
-pub GETRUNTIME  
-  ramlen 0 DO      
-    10 ms
-    $7.0000 I + EC@  I runtime + C!        --- write the eeprom bytes to the buffer
-  LOOP
- 
+pub GETRUNTIME     \ Read ram/eeprom of RTC and set runtime structure
+---  ramlen 0 DO      
+---    10 ms
+---    $7.0000 I + EC@  I runtime + C!        --- write the ds3231 eeprom bytes to the buffer
+---  LOOP
+   \ Read ram of RTC into runtime structure
+    @rtc 0 >
+    IF
+      I2CSTART @rtc I2C! $14 I2C! I2CREST @rtc 1+ I2C!
+      runtime ramlen ADO 0 I2C@ I C! LOOP 1 I2C@ DROP
+      I2CSTOP
+    THEN
 ;
 
 { show what is in runtime program memory currently }
@@ -182,8 +193,9 @@ pub SETTIMES
     +                                          ---   add daybegin to duration for dayend minutes
     DUP #1440 < IF  dayend  W!   ELSE  #1440 -  dayend W!  THEN     --- adjust for crossing 2400 hrs
 ;
+
 {
-  word to return flag given two vars set in minutes,
+  routine to return flag given two vars set in minutes,
   "daybegin" and "dayend" this routine determines if it's day or night
 }
 pub DAY?   (  -- flg )
@@ -193,11 +205,6 @@ pub DAY?   (  -- flg )
         MINUTES@  daybegin W@ =>  
         IF  
             MINUTES@ dayend W@ <=     --- return true or false
---- **DP**            IF  
---- **DP**                TRUE
---- **DP**            ELSE
---- **DP**                FALSE
---- **DP**            THEN   
         ELSE
             FALSE
         THEN
@@ -207,14 +214,10 @@ pub DAY?   (  -- flg )
             TRUE
         ELSE
             MINUTES@ dayend W@  <=    --- return true of false
---- **DP**            IF   
---- **DP**                TRUE
---- **DP**            ELSE
---- **DP**                FALSE
---- **DP**            THEN
         THEN
     THEN
 ;
+
 { show day begin and day end is absolute minutes }
 pub showdays
     CR PRINT" day begin: " daybegin W@ .
@@ -429,12 +432,6 @@ pub  STATE   ( -- )
     MINUTE?   
     IF
         DAY? LIGHTS            --- control the lights from here, checking everything minute
---- **DP**        IF  
---- **DP**           ON LIGHTS
---- **DP**        ELSE
---- **DP**           OFF LIGHTS
---- **DP**        THEN
-        
         SETRUNTIME       --- each minute store running parameters to DS3231 eeprom 
         LOG? IF CR PRINT" Storing Parameters to DS3231 EEPROM " 
         THEN
@@ -566,47 +563,46 @@ pub systestmode (  ON/OFF  -- )   --- put system in test mode for tank levelA
 ;
        
 pub sysinit  ( -- )   --- initialize the system
-    CR PRINT" Setting Time from DS3231 "
-    .Time 10 ms ."  " .DAY 10 ms ."  " .DATE --- set the kernel rtc from the DS3231  
+    CR PRINT" Setting Time from DS3231 " CR
+    .DT                          --- set the kernel rtc from the DS3231  
+    CR PRINT" Restoring System Running Parameters from DS3231 EEPROM "
     GETRUNTIME                   --- get current runtime parameters from DS3231 eeprom 
     10 ms
-    0 LSTF C!                    --- clear last fault
-    --- TRUE tsflag !            --- set task flag to run the loop
-    ON CIRCPUMP            --- start the circulation pump
-    DAY?                   --- is it day?
+    CR PRINT" Starting System" CR
+    CR PRINT" Circ Pump Started "
+    ON CIRCPUMP                  --- start the circulation pump
+    CR PRINT" Setting Day or Night " CR 
+    DAY?                         --- is it day?
     IF
         ON LIGHTS
     ELSE
         OFF LIGHTS
     THEN
-    CR PRINT" Circ Pump Started "
-    CR PRINT" Task Started "
-    CR PRINT" Restoring System Running Parameters from DS3231 EEPROM "
     --- setdefaults     --- this sets defaults from program, debugging or no DS1302 setup
     FALSE edsflag !     --- ebb dwell status flag
     FALSE fdsflag !     --- flow dwell status flag
     FALSE fflag !       --- fault flag, stops system
     FALSE lightflag !   --- light flag to false fault light
     systempin FLOAT     --- reset system pin to input
-    --- #150503 DATE!   --- date time is no DS1302 attached
-    --- #193000 TIME!  
+    0 LSTF C!           --- clear last fault code
+    0 PSIFLT !          --- reset fault code from DLVR-L30D.fth PSI Sensor Driver
     g==                 --- turn console logging on
     OFF systestmode     --- start system in live mode 
 ;
 
 
-WORD pcntr 
 
 { stepping routine with delay for keypoll 4K/sec calls }
 pub nstps
-    cntr W@
+    scntr W@
     0=
     IF
-        #64000 cntr W!
+        #50000 scntr W!
         doit
     ELSE
-        cntr W--
+        scntr W--
     THEN
+
     pcntr W@
     0=
     IF
@@ -621,9 +617,9 @@ pub nstps
 { Start the system }
 pub startit
     sysinit
-    #64000 cntr W!            --- set state machine loop delay cntr to delay for GET.PSI 
-    pcntr W~                  --- set  loop for GET.PSI polling
-    0 LSTF C!                 --- reset Last Fault code to zero
+    #50000 scntr W!            --- set state machine loop delay cntr to delay for GET.PSI 
+    pcntr W~                   --- set loop for GET.PSI polling
+    0 LSTF C!                  --- reset Last Fault code to zero
     ' nstps  keypoll W!
 ;
  
@@ -634,7 +630,6 @@ pub stopit
 ;
 
 --- AUTORUN startit         --- auto-start the system
-
 
 ]~
 END
