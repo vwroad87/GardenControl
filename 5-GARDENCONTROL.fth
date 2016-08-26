@@ -8,6 +8,7 @@
 \   dp 160815         modifying code for new DLVR-L30D pressure sensor, Tachyon module and P8 board type
 \                     ready for testing, set defaults for new sensor  0.80
 \   dp 160824         updated to use DS3232M RTC Ram to save and restore runtime params  0.91
+\   dp 160826         cleaned up code and comments, reduced memory allocation to 22 bytes for runtime struct
 
 TACHYON
 [~
@@ -18,7 +19,7 @@ IFNDEF DLVR-L30D.fth
 }
 
 FORGET GARDENCONTROL.fth
-pub  GARDENCONTROL.fth   PRINT" Garden Control P8 160824 1400 V0.91          " ;
+pub  GARDENCONTROL.fth   PRINT" Garden Control P8 160826 0800 V0.92          " ;
 
 { ***** equipment I/O assignments ********* }
 #P18 == flowp         --- flow pump
@@ -504,7 +505,9 @@ pub showfault ( faultcode -- )  --- display fault
 
 ;
     
-{ this is the main word so far }
+{ this is controls error checking, system recovery from system pin depress
+  and calls the state machine
+}
 pub doit
     fflag @
     IF  
@@ -533,28 +536,28 @@ pub doit
         THEN       
     ELSE  
         HALT? LSTF?  OR   
-        IF                                           --- check for halt or fault code
-            ALLSTOP                                  --- stop everything
-            TRUE fflag !                             --- turn on fault lights
-            LOG? IF CR .TIME PRINT" : System Halted"         --- system halted
+        IF                                            --- check for halt or fault code
+            ALLSTOP                                   --- stop everything
+            TRUE fflag !                              --- turn on fault lights
+            LOG? IF CR .TIME PRINT" : System Halted"  --- system halted
               CR PRINT" Last Fault: "
             THEN
             LOG? IF
-              LSTF C@  showfault              --- call the word to show fault text
+              LSTF C@  showfault                      --- call the word to show fault text
             THEN       
         ELSE
             LOG? IF CR 
             THEN
-            STATE     --- run the state machine
+            STATE                                      --- run the state machine
         THEN
     THEN     
 ;
 
 pub systestmode (  ON/OFF  -- )   --- put system in test mode for tank levelA
     DUP IF 
-           50 tanklevel !      --- put dummy tank level for testing
+           50 tanklevel !         --- put dummy tank level for testing
         THEN
-        testm !               --- write on off flag
+        testm !                   --- write on off flag
 ;
        
 pub sysinit  ( -- )   --- initialize the system
@@ -587,41 +590,44 @@ pub sysinit  ( -- )   --- initialize the system
 
 
 
-{ stepping routine with delay for keypoll 4K/sec calls }
+{ stepping routine with delay for keypoll 4K/sec calls
+  the state machine is called about ever 2 seconds
+  and the PSI sensor from DLVR-L30D.fth driver is called about 10 per second
+} 
 pub nstps
     scntr W@
     0=
     IF
-        #50000 scntr W!
-        doit
+        #50000 scntr W!  
+        doit               --- run the state machine
     ELSE
-        scntr W--
+        scntr W--          --- reset counter for state machine
     THEN
 
     pcntr W@
     0=
     IF
         #5000 pcntr W!
-        PSI.GET            --- call the PSI Sensor
+        PSI.GET            --- run the PSI Sensor often from the DLVR-L30D.fth driver to read sensor
     ELSE
-        pcntr W--
+        pcntr W--          --- reset counter for psi sensor
     THEN
 ;
 
     
 { Start the system }
 pub startit
-    sysinit
-    #50000 scntr W!            --- set state machine loop delay cntr to delay for GET.PSI 
+    sysinit                    --- initialize system 
+    #50000 scntr W!            --- set state machine loop delay scntr to delay for GET.PSI to get readings   
     pcntr W~                   --- set loop for GET.PSI polling
     0 LSTF C!                  --- reset Last Fault code to zero
-    ' nstps  keypoll W!
+    ' nstps  keypoll W!        --- set nstps to get called by keypoll
 ;
  
 { stop the sytem }
 pub stopit
-    ALLSTOP
-    0 keypoll W!
+    ALLSTOP                    --- turn everything off
+    0 keypoll W!               --- disable keypoll calling nstps
 ;
 
 --- AUTORUN startit         --- auto-start the system
