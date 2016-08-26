@@ -24,22 +24,22 @@ pub  GARDENCONTROL.fth   PRINT" Garden Control P8 160824 1400 V0.91          " ;
 #P18 == flowp         --- flow pump
 #P17 == ebbp          --- ebb pump
 #P19 == lights        --- uh guess what?
-#P16 == circp        --- circulation pump
+#P16 == circp         --- circulation pump
 #P15 == alarmp        --- alarm pin for FAULTLIGHT  
 #P14 == systempin     --- reset pin input
 
 { ************ constants ************ }
-#22 == ramlen   --- ram data length
+#22 == ramlen        --- ram data length
 { states }
-1 == ebbs    --- ebb state
-2 == flows    --- flow state
+1 == ebbs            --- ebb state
+2 == flows           --- flow state
 { fault codes }
-1 == WLSF   --- water level sensor fault, lets shutdown if the water level sensor fails
-2 == WLHF  --- water level high fault,  are we over flowing the tank
-4 == WLLF  ---  water level low fault,   did it all leak out
+1 == WLSF            --- water level sensor fault, lets shutdown if the water level sensor fails
+2 == WLHF            --- water level high fault,  are we over flowing the tank
+4 == WLLF            ---  water level low fault,   did it all leak out
 { timers }
-TIMER  ebbdwell
-TIMER  flowdwell      
+TIMER  ebbdwell      --- timer to rest at ebb dwell until filling tank to ebb max level
+TIMER  flowdwell     --- timer to rest at flow dwell until emptying tank to flow min level  
 
 { *********** some variables *************** }
 WORD now             --- minutes of day now
@@ -49,11 +49,10 @@ LONG fdsflag         --- flag for flow dwell setting
 LONG edsflag         --- flag for ebb dwell setting
 LONG fflag           --- fault flag
 LONG lightflag       --- just turn on the fault light once
-LONG retryadc        --- counter to retry adc reading in task
 LONG _log            --- true false to display logging to screen
 LONG testm           --- on off flag for setting system in test mode
 WORD scntr           --- loop counter for keypoll pacing of state machine
-scntr W~              --- set it to 0
+scntr W~             --- set it to 0
 WORD pcntr           --- loop counter for keypoll pacing of calls to PSI.GET from DLVR-L30D.fth module
 pcntr W~             --- set it to zeor
 LONG tanklevel       --- current tank level
@@ -63,7 +62,7 @@ pub LOG? ( -- flag ) --- return logging flag on or off
   _log @
 ;
 
-pub g==   ( -- )   --- turn data logging to the screen on
+pub g==   ( -- )    --- turn data logging to the screen on
    ON _log !
    CR CR PRINT" *** Logging On ***  " CR
 ;
@@ -74,8 +73,8 @@ pub g--   ( -- )    --- turn data logging to the screen off
 ;
 
 
-{ runtime structure stored in DS3132 EEPROM }
-TABLE runtime #31  ALLOT    \ allocate long aligned memory for #31 bytes
+{ runtime structure stored in DS3232 SRAM }
+TABLE runtime #22  ALLOT    \ allocate memory for #22 bytes
 runtime ORG    
     1 DS HALT      --- halt byte TRUE do not run
     1 DS LSTS      --- Last state running
@@ -105,10 +104,6 @@ runtime ORG
 {  new routines to save and restore runtime to RTC ram }
 
 pub SETRUNTIME    \ Write ram/eeprom of RTC from runtime structure
----    ramlen 0 DO    ---  for d23231
----      10 ms
----      runtime I + C@ $7.0000 I + EC!         --- write the runtime bytes to the ds3231 eeprom
----    LOOP
    \ Write runtime structure to ram of RTC 
     @rtc 0 >
     IF
@@ -119,10 +114,6 @@ pub SETRUNTIME    \ Write ram/eeprom of RTC from runtime structure
 ;
 
 pub GETRUNTIME     \ Read ram/eeprom of RTC and set runtime structure
----  ramlen 0 DO      
----    10 ms
----    $7.0000 I + EC@  I runtime + C!        --- write the ds3231 eeprom bytes to the buffer
----  LOOP
    \ Read ram of RTC into runtime structure
     @rtc 0 >
     IF
@@ -139,8 +130,9 @@ pub showit
         PRINT" : "
         runtime I + C@ .
     LOOP
-;  
-{ default setup if not set }
+; 
+ 
+{ default setup parameters if not set }
 --- IFDEF SETDEFAULT
 pub setdefaults
     FALSE HALT C!      --- start in running state
@@ -181,12 +173,12 @@ pub clearram
 pub MINUTES@ ( -- minutes )    --- get time as minutes
     TIME@ #100 / #100 U/MOD #60 * +
 ;   
-{ word to check for each minute change }
+{ check for each minute change }
 pub MINUTE? ( -- flg )   --- has a minute elapsed?            
     MINUTES@ now W@ OVER now W! <>
 ;  
 
-{ word to set daybegin and dayend to absolute minutes,  adjusts for crossing 2400 hrs boundary }
+{ set daybegin and dayend to absolute minutes,  adjusts for crossing 2400 hrs boundary }
 pub SETTIMES
     HRSD C@ #60 * MIND C@ +  DUP  daybegin W!  --- get day begin time in minutes dup and store a copy
     DURH C@ #60 * DURM C@ +                    --- get duration of day in minutes and add day begin minutes
@@ -195,7 +187,7 @@ pub SETTIMES
 ;
 
 {
-  routine to return flag given two vars set in minutes,
+  return flag given two vars set in minutes,
   "daybegin" and "dayend" this routine determines if it's day or night
 }
 pub DAY?   (  -- flg )
@@ -224,7 +216,7 @@ pub showdays
     CR PRINT" day end  : " dayend W@ .
 ;
 
-{ Gets tank level }
+{ Get tank level in tenths of inches, i.e. 50 is 5 inches }
 pub GetTankLevel (  -- level )
 testm @  IF             --- check for test mode, if so just return the tanklevel
   tanklevel @
@@ -263,11 +255,12 @@ pub FLOWPUMP  ( ON / OFF -- message to terminal )
 ;
 
 
-{ word to test if flow pump is on or off }
+{ test if flow pump is on or off }
 pub FLOWPUMP?  ( -- ON / OFF )
     flowp PIN@
 ;
 
+{ control ebbpump }
 pub EBBPUMP  ( ON / OFF -- message to terminal )
     IF  
        ebbp HIGH
@@ -279,7 +272,7 @@ pub EBBPUMP  ( ON / OFF -- message to terminal )
     LOG? IF CR PRINT" TIME LEFT : "  LSTT C@  .  PRINT"  Minutes" THEN
 ;
 
-{ word to test if ebb pump is on or off }
+{ test if ebb pump is on or off }
 pub EBBPUMP?  ( -- ON / OFF )
     ebbp PIN@
 ;
@@ -298,6 +291,7 @@ pub CIRCPUMP  ( ON / OFF -- message to terminal )
        THEN
     THEN
 ;
+
 { control lights }
 pub LIGHTS  ( ON / OFF -- message to terminal )
     IF     
@@ -308,9 +302,10 @@ pub LIGHTS  ( ON / OFF -- message to terminal )
         LOG? IF .TIME PRINT" : LIGHTS OFF  " CR THEN
     THEN
 ;
-{ ***************equipment ****************** }
 
-{ word to change to next state and set time in this state }
+
+
+{ change to next state and set time in this state }
 pub NEXTSTATE   ( -- )
     DAY?
     IF                                            ---  it's day time
@@ -427,7 +422,6 @@ pub FLOW
 ;
 
 { simple state machine, very simple }
-
 pub  STATE   ( -- )
     MINUTE?   
     IF
@@ -461,6 +455,7 @@ pub  STATE   ( -- )
          THEN     
     THEN
 ;
+
 { halt set? }
 pub HALT? ( -- 0 / non zero )
     HALT C@
