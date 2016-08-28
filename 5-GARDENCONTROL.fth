@@ -9,6 +9,7 @@
 \                     ready for testing, set defaults for new sensor  0.80
 \   dp 160824         updated to use DS3232M RTC Ram to save and restore runtime params  0.91
 \   dp 160826         cleaned up code and comments, reduced memory allocation to 22 bytes for runtime struct
+\   dp 160828         added Peter's techniques,  clean up the code more, ready for live testing again v.93
 
 TACHYON
 [~
@@ -19,7 +20,7 @@ IFNDEF DLVR-L30D.fth
 }
 
 FORGET GARDENCONTROL.fth
-pub  GARDENCONTROL.fth   PRINT" Garden Control P8 160826 0800 V0.92          " ;
+pub  GARDENCONTROL.fth   PRINT" Garden Control P8 160828 1100 V0.93          " ;
 
 { ***** equipment I/O assignments ********* }
 #P18 == flowp         --- flow pump
@@ -52,8 +53,8 @@ LONG fflag           --- fault flag
 LONG lightflag       --- just turn on the fault light once
 LONG _log            --- true false to display logging to screen
 LONG testm           --- on off flag for setting system in test mode
-WORD scntr           --- loop counter for keypoll pacing of state machine
-WORD pcntr           --- loop counter for keypoll pacing of calls to PSI.GET from DLVR-L30D.fth module
+LONG scntr           --- loop counter for keypoll pacing of state machine
+LONG pcntr           --- loop counter for keypoll pacing of calls to PSI.GET from DLVR-L30D.fth module
 LONG tanklevel       --- current tank level
 
 
@@ -168,10 +169,12 @@ pub showram
 pub clearram
     runtime ramlen ADO  0   I  C!  LOOP
 ;
+
 { get time of day in minutes }
 pub MINUTES@ ( -- minutes )    --- get time as minutes
     TIME@ #100 / #100 U/MOD #60 * +
 ;   
+
 { check for each minute change }
 pub MINUTE? ( -- flg )   --- has a minute elapsed?            
     MINUTES@ now W@ OVER now W! <>
@@ -232,14 +235,14 @@ ELSE                    --- else live reading from the psi senor
 THEN
 
 ;
-ALIAS GetTankLevel gtl
+ALIAS GetTankLevel gtl@                       --- fetch the tank level
 
 
 { tank level set value helper for testing }
-pub SetTankLevel ( level -- )        --- this is raw ADC reading
+pub SetTankLevel ( level -- )                 --- set the global tank level for debug 
     tanklevel  !
 ;
-ALIAS SetTankLevel  stl
+ALIAS SetTankLevel  stl!                      --- store the tank level to global tanklevel var for debug  
 
 { helper word to print status of ON or OFF }
 pub .ON/OFF ( on/off -- print ON or OFF )
@@ -248,9 +251,14 @@ pub .ON/OFF ( on/off -- print ON or OFF )
 
 { helper word to print level of tank } 
 pub .GTL ( -- print tank level ) 
-  PRINT" Tank Level: " gtl . CR 
+  PRINT" Tank Level: " gtl@ . CR 
 ;
 
+
+{ helper word to print time left in this state of tank } 
+pub .TLS ( -- print time left in this state  ) 
+    CR  PRINT" Time Left: " LSTT C@ . PRINT"  Minutes " CR
+;
 
 { equipment action words  }
 pub FLOWPUMP  ( ON / OFF -- message to terminal )
@@ -337,7 +345,7 @@ pub NEXTSTATE   ( -- )
 
 { run the ebb cycle }
 pub EBB
-    gtl   EBHL C@ =>  
+    gtl@   EBHL C@ =>  
     IF                                             --- ebb water full ?
         OFF EBBPUMP                                --- turn the pump off
         edsflag @ FALSE =                         --- set dwell timer one time
@@ -349,7 +357,7 @@ pub EBB
             THEN     
         THEN
     ELSE   
-        gtl EBLL C@  <=                            --- ebb water below low level setting ?    
+        gtl@ EBLL C@  <=                            --- ebb water below low level setting ?    
         IF
             ebbdwell TIMEOUT?                      --- has the dwell timer elapsed?
             IF   
@@ -367,7 +375,7 @@ pub EBB
             LOG? IF CR  PRINT" EBB Water Nominal: "  CR
               .GTL
               CR PRINT" EBB Pump is: "   EBBPUMP? IF ." ON "  ELSE ." OFF" THEN  
-              CR PRINT" TIME LEFT : "  LSTT C@  .  PRINT"  Minutes" 
+              .TLS
             THEN
         THEN
     THEN
@@ -375,25 +383,24 @@ pub EBB
 
 { run the flow cycle }
 pub FLOW
-    gtl   FLLL C@ <=                         
-    IF                                                          --- flow water empty ?
-        OFF FLOWPUMP                                            --- turn the pump off
-        fdsflag @ FALSE =                                      --- set dwell timer one time
+    gtl@ FLLL C@ <=                                           --- tank <= to flow low level?
+    IF                                                        --- flow water empty ?
+        OFF FLOWPUMP                                          --- turn the pump off
+        fdsflag @ FALSE =                                     --- set dwell timer one time
         IF
            TRUE fdsflag !                                     --- reset the dwell flag
-           FDWL C@  #60000 * flowdwell   TIMEOUT               --- set the dwell timer
-           LOG? IF CR .TIME PRINT" : Reset Flow Dwell Timer Reset Pump OFF "  CR
+           FDWL C@  #60000 * flowdwell TIMEOUT                --- set the dwell timer
+           LOG? IF CR .TIME PRINT" : Reset Flow Dwell Timer Reset Pump OFF " CR
              .GTL 
            THEN
         THEN
     ELSE                                  
-        gtl FLHL C@  =>                                --- flow water above high level setting ?     
+        gtl@ FLHL C@  =>                               --- flow water above high level setting ?     
         IF   
-            cr PRINT" step 4 "
             flowdwell TIMEOUT?                         --- has dwell timer elasped?
             IF
                 ON FLOWPUMP                            --- flow pump back on
-                FALSE fdsflag !                       --- reset flow dwell timer flag  
+                FALSE fdsflag !                        --- reset flow dwell timer flag  
                 LOG? IF CR .TIME PRINT" : Flow Water High, Empyting: " CR
                   .GTL
                 THEN
@@ -406,10 +413,9 @@ pub FLOW
             LOG? IF CR  PRINT" Flow Water Nominal: " CR 
               .GTL
               CR  PRINT" Flow Pump is: "   FLOWPUMP? IF ." ON "  ELSE ." OFF" THEN
-              CR PRINT" TIME LEFT : "  LSTT C@  .  PRINT"  Minutes" 
+              .TLS
             THEN
         THEN
-
     THEN
 ;
 
@@ -437,11 +443,13 @@ pub  STATE   ( -- )
         ebbs = IF
            --- running Ebb cycle
            LOG? IF CR .TIME PRINT" : Running State: Ebb" 
+              .TLS
            THEN     
            EBB
          ELSE
            --- running FLow cycle
            LOG? IF CR .TIME PRINT" : Running State: Flow"
+             .TLS
            THEN  
            FLOW
          THEN     
@@ -461,15 +469,16 @@ pub LSTF?  ( -- true/false )
     2DROP                                  --- drop the other return readings from PSI@
     
     WLMX C@                                --- waterlevel max ?
-    gtl < IF WLHF LSTF C! THEN             ---  water level high fault
+    gtl@ < IF WLHF LSTF C! THEN             ---  water level high fault
     
     WLMN C@                                --- waterlevel low ?
-    gtl  => IF WLLF LSTF C! THEN           ---  water level low fault
+    gtl@  => IF WLLF LSTF C! THEN           ---  water level low fault
     LSTF C@ 0 > IF TRUE ELSE FALSE THEN    --- return true or false and fault code in var
 ;
 
 { turns off all equipment }
-pub ALLSTOP
+pub ALLSTOP 
+    MUTE            --- turn off alarm
     OFF FLOWPUMP
     OFF EBBPUMP
     OFF LIGHTS
@@ -577,6 +586,7 @@ pub sysinit  ( -- )   --- initialize the system
     0 PSIFLT !          --- reset fault code from DLVR-L30D.fth PSI Sensor Driver
     g==                 --- turn console logging on
     OFF systestmode     --- start system in live mode 
+    CR PRINT" Tank Level Sensor Starting Up, Standby " CR
 ;
 
 
@@ -586,31 +596,32 @@ pub sysinit  ( -- )   --- initialize the system
   and the PSI sensor from DLVR-L30D.fth driver is called about 10 per second
 } 
 pub nstps
-    scntr W@
-    0=
+    scntr @                --- get the state machine counter
+    0=                     --- at zero ?
     IF
-        #50000 scntr W!  
+        #50000 scntr !     --- reset counter 
         doit               --- run the state machine
     ELSE
-        scntr W--          --- reset counter for state machine
+        scntr --           --- decrement counter
     THEN
 
-    pcntr W@
-    0=
+    pcntr @                --- get the read psi sensor counter
+    0=                     --- at zero
     IF
-        #5000 pcntr W!
+        #5000 pcntr !      --- reset counter and read sensor
         PSI.GET            --- run the PSI Sensor often from the DLVR-L30D.fth driver to read sensor
     ELSE
-        pcntr W--          --- reset counter for psi sensor
+        pcntr --           --- decrement counter 
     THEN
 ;
 
     
 { Start the system }
 pub startit
+    DROP                       --- drop any cruft on reboot stack
     sysinit                    --- initialize system 
-    #50000 scntr W!            --- set state machine loop delay scntr to delay for GET.PSI to get readings   
-    pcntr W~                   --- set loop for GET.PSI polling
+    #200_000 scntr !           --- set state machine loop delay large to delay for GET.PSI readings   
+    pcntr ~                    --- set loop for GET.PSI polling
     0 LSTF C!                  --- reset Last Fault code to zero
     ' nstps  keypoll W!        --- set nstps to get called by keypoll
 ;
@@ -621,7 +632,7 @@ pub stopit
     0 keypoll W!               --- disable keypoll calling nstps
 ;
 
---- AUTORUN startit         --- auto-start the system
+--- AUTORUN startit            --- auto-start the system
 
 ]~
 END
