@@ -246,56 +246,56 @@ ALIAS SetTankLevel  stl!                      --- store the tank level to global
 
 { helper word to print status of ON or OFF }
 pub .ON/OFF ( on/off -- print ON or OFF )
-  IF DUP PRINT" ON " ELSE PRINT" OFF " THEN
+  IF PRINT" ON " ELSE PRINT" OFF " THEN
 ;
 
 { helper word to print level of tank } 
 pub .GTL ( -- print tank level ) 
-  PRINT" Tank Level: " gtl@ . CR 
+  PRINT" Tank Level  " gtl@ . CR 
 ;
 
 
 { helper word to print time left in this state of tank } 
 pub .TLS ( -- print time left in this state  ) 
-    CR  PRINT" Time Left: " LSTT C@ . PRINT"  Minutes " CR
+    CR  PRINT" Time Left  " LSTT C@ . PRINT"  Minutes " CR
 ;
 
 { equipment action words  }
 pub FLOWPUMP  ( ON / OFF -- message to terminal )
     DUP flowp PIN!
-    LOG? IF CR .TIME PRINT" : FLOW PUMP: " .ON/OFF CR .GTL THEN
+    LOG? IF CR .TIME PRINT"  FLOW PUMP  " .ON/OFF CR .GTL THEN
     DROP    --- if logging is off we need to drop 
 ;
 
 
-{ test if flow pump is on or off }
-pub FLOWPUMP?  ( -- ON / OFF )
-    flowp PIN@
+{ return terminal message of flow pump status }
+pub .FLOWPUMP  ( -- terminal message on or off )
+    flowp PIN@ CR PRINT" Flow Pump is " IF PRINT" ON " ELSE PRINT" OFF " THEN
 ;
 
 { control ebbpump }
 pub EBBPUMP  ( ON / OFF -- message to terminal )
     DUP ebbp PIN!      --- set the pump on or off
-    LOG? IF CR .TIME PRINT" : EBB PUMP " .ON/OFF CR .GTL  THEN
+    LOG? IF CR .TIME PRINT"  EBB PUMP " .ON/OFF CR .GTL  THEN
     DROP    --- if logging is off we need to drop 
 ;
 
-{ test if ebb pump is on or off }
-pub EBBPUMP?  ( -- ON / OFF )
-    ebbp PIN@
+{ return terminal message of ebb pump status }
+pub .EBBPUMP  ( -- terminal message on or off )
+    ebbp PIN@ CR PRINT" Ebb Pump is " IF PRINT" ON " ELSE PRINT" OFF " THEN
 ;
 
 { control circulation pump }
 pub CIRCPUMP  ( ON / OFF -- message to terminal )
     DUP circp PIN!
-    LOG? IF .TIME PRINT" : CIRC PUMP " .ON/OFF CR .GTL THEN
+    LOG? IF .TIME PRINT"  CIRC PUMP " .ON/OFF CR .GTL THEN
     DROP    --- if logging is off we need to drop 
 ;
 
 { control lights }
 pub LIGHTS  ( ON / OFF -- message to terminal )
     DUP lights PIN!      
-    LOG? IF .TIME PRINT" : LIGHTS " .ON/OFF THEN
+    LOG? IF .TIME PRINT"  LIGHTS " .ON/OFF THEN
     DROP    --- if logging is off we need to drop 
 ;
 
@@ -304,40 +304,40 @@ pub NEXTSTATE   ( -- )
     DAY?
     IF                                            ---  it's day time
         LSTS C@ ebbs =                            ---  determine the next state change for day cycle
-        IF  
+        IF
             flows  LSTS C!                        ---  change state to  flow and flow day time
             OFF EBBPUMP                           ---  make sure the ebb pump is off during state change
             FLTD C@  LSTT C!                      ---  set the time for this state
-            LOG? IF CR .TIME  PRINT" : State change to day flow "
-              CR  PRINT" Time in this state : " LSTT C@ . CR
+            LOG? IF CR .TIME  PRINT"  State change to day flow "
+              .TLS                                ---  print time in state
               .GTL                                ---  print tank level
             THEN
-        ELSE  
+        ELSE
             ebbs LSTS C!                          ---  state change to ebb
             OFF FLOWPUMP                          ---  make sure the pump pump is off during state change
             EBTD  C@ LSTT C!
-            LOG? IF CR .TIME  PRINT" : State change to day ebb "
-              CR  PRINT" Time in this state : " LSTT C@ .  CR
+            LOG? IF CR .TIME  PRINT"  State change to day ebb "
+              .TLS
               .GTL
             THEN
         THEN
     ELSE                                          ---  it's night time, stay warm
         LSTS C@ ebbs =                            ---  determine the next state change for night cycle
-        IF  
+        IF
             flows LSTS C!                         ---  change state to  flow and flow night time
             OFF EBBPUMP                           ---  make sure the ebb pump is off during state change
             FLTN C@  LSTT C!                      ---  set the time for this state
-            LOG? IF CR .TIME  PRINT" : State change to night flow "
-              CR  PRINT" Time in this state : " LSTT C@ .  CR
-              .GTL 
+            LOG? IF CR .TIME  PRINT"  State change to night flow "
+              .TLS 
+              .GTL
             THEN
-         ELSE  
+         ELSE
             ebbs LSTS C!                          ---  state change to ebb
             OFF FLOWPUMP                          ---  make sure the flow pump is off during state change
             EBTN  C@ LSTT C!
-            LOG? IF CR .TIME  PRINT" : State change to night ebb "
-              CR  PRINT" Time in this state : " LSTT C@ . CR 
-              .GTL 
+            LOG? IF CR .TIME  PRINT"  State change to night ebb "
+              .TLS 
+              .GTL
             THEN
         THEN
    THEN
@@ -345,36 +345,31 @@ pub NEXTSTATE   ( -- )
 
 { run the ebb cycle }
 pub EBB
-    gtl@   EBHL C@ =>  
+    gtl@   EBHL C@ =>
     IF                                             --- ebb water full ?
         OFF EBBPUMP                                --- turn the pump off
         edsflag @ FALSE =                         --- set dwell timer one time
         IF
             TRUE edsflag !                        --- reset ebb the dwell timer flag
             EDWL C@  #60000 * ebbdwell   TIMEOUT   --- set the dwell timer
-            LOG? IF CR .TIME PRINT" : Reset EBB Dwell Timer Set Pump OFF " CR
-              .GTL
-            THEN     
+            LOG? IF CR .TIME PRINT"  Reset EBB Dwell Timer Set Pump OFF " CR .GTL THEN
         THEN
-    ELSE   
+    ELSE
         gtl@ EBLL C@  <=                            --- ebb water below low level setting ?    
         IF
             ebbdwell TIMEOUT?                      --- has the dwell timer elapsed?
-            IF   
+            IF
                 ON EBBPUMP                         --- ebb pump back on
                 FALSE edsflag !                   --- reset ebb dwell timer flag
-                LOG? IF CR .TIME PRINT" : EBB Water Low, filling "  CR
+                LOG? IF CR .TIME PRINT"  EBB Water Low, filling "  CR
                    .GTL
                 THEN
             ELSE
-                LOG? IF CR .TIME PRINT" : EBB Water Low, Dwell TIme Left: " ebbdwell @ 1000 U/ . CR
-                  .GTL 
-                THEN
+                LOG? IF CR .TIME PRINT"  EBB Water Low, Dwell TIme Left  " ebbdwell @ 1000 U/ . CR .GTL THEN
             THEN
-        ELSE  
-            LOG? IF CR  PRINT" EBB Water Nominal: "  CR
-              .GTL
-              CR PRINT" EBB Pump is: "   EBBPUMP? IF ." ON "  ELSE ." OFF" THEN  
+        ELSE
+            LOG? IF CR  PRINT" EBB Water Nominal "  CR .GTL
+              .EBBPUMP  
               .TLS
             THEN
         THEN
@@ -389,10 +384,8 @@ pub FLOW
         fdsflag @ FALSE =                                     --- set dwell timer one time
         IF
            TRUE fdsflag !                                     --- reset the dwell flag
-           FDWL C@  #60000 * flowdwell TIMEOUT                --- set the dwell timer
-           LOG? IF CR .TIME PRINT" : Reset Flow Dwell Timer Reset Pump OFF " CR
-             .GTL 
-           THEN
+           FDWL C@  #60000 * flowdwell TIMEOUT            --- set the dwell timer
+            LOG? IF CR .TIME PRINT"  Reset Flow Dwell Timer Reset Pump OFF " CR .GTL THEN
         THEN
     ELSE                                  
         gtl@ FLHL C@  =>                               --- flow water above high level setting ?     
@@ -401,18 +394,18 @@ pub FLOW
             IF
                 ON FLOWPUMP                            --- flow pump back on
                 FALSE fdsflag !                        --- reset flow dwell timer flag  
-                LOG? IF CR .TIME PRINT" : Flow Water High, Empyting: " CR
-                  .GTL
+                LOG? IF CR .TIME PRINT"  Flow Water High, Empyting " 
+                  CR .GTL
                 THEN
             ELSE
-                LOG? IF CR .TIME PRINT" : FLOW Water High, Dwell TIme Left: " flowdwell @ 1000 U/ . CR 
-                  .GTL
+                LOG? IF CR .TIME PRINT"  FLOW Water High, Dwell TIme Left " flowdwell @ 1000 U/ .
+                  CR .GTL 
                 THEN
-            THEN    
-        ELSE  
-            LOG? IF CR  PRINT" Flow Water Nominal: " CR 
+            THEN
+        ELSE
+            LOG? IF CR  PRINT" Flow Water Nominal " CR 
+              .FLOWPUMP
               .GTL
-              CR  PRINT" Flow Pump is: "   FLOWPUMP? IF ." ON "  ELSE ." OFF" THEN
               .TLS
             THEN
         THEN
@@ -425,32 +418,27 @@ pub  STATE   ( -- )
     IF
         DAY? LIGHTS            --- control the lights from here, checking everything minute
         SETRUNTIME             --- each minute store running parameters to DS3231 eeprom 
-        LOG? IF CR PRINT" Storing Parameters to DS3231 EEPROM " 
-        THEN
+        --- LOG? IF CR PRINT" Storing Parameters to DS3231 EEPROM " 
+        --- THEN
         LSTT C@ 1- 0 <=        --- calc last state running time on minute tick check for time out
         IF
             NEXTSTATE          --- change state  reload LSTT/LSTS with correct day night value and state
-            LOG? IF CR   .TIME PRINT" : State Changed to: "
+            LOG? IF CR   .TIME PRINT"  State Changed to "
               LSTS C@  1 = IF PRINT" Ebb " ELSE PRINT" Flow " THEN
             THEN
         ELSE  
-            LSTT C--           --- nope still in this state just write LSTT with the decrimented minute
-            LOG? IF CR .TIME PRINT" : Minute change" 
-            THEN
+            LSTT C--           --- still in this state just write LSTT, decrimented minute
+            --- LOG? IF CR .TIME PRINT"  Minute Change " THEN
         THEN   
     ELSE
         LSTS C@
         ebbs = IF
            --- running Ebb cycle
-           LOG? IF CR .TIME PRINT" : Running State: Ebb" 
-              .TLS
-           THEN     
+           LOG? IF CR .TIME PRINT"  Running State  Ebb " .TLS THEN     
            EBB
          ELSE
            --- running FLow cycle
-           LOG? IF CR .TIME PRINT" : Running State: Flow"
-             .TLS
-           THEN  
+           LOG? IF CR .TIME PRINT"  Running State Flow " .TLS THEN  
            FLOW
          THEN     
     THEN
@@ -512,7 +500,7 @@ pub doit
     fflag @
     IF  
         FAULTLIGHT                 --- turn on the fault light
-        LOG? IF CR .TIME PRINT"  : Clear Fault and Press Reset to continue" CR
+        LOG? IF CR .TIME PRINT"   Clear Fault and Press Reset to continue" CR
           .GTL 
         THEN
         systempin PIN@ FALSE =
@@ -529,7 +517,7 @@ pub doit
             ELSE
                 OFF LIGHTS
             THEN
-            LOG? IF CR .TIME  PRINT" : System Reset "
+            LOG? IF CR .TIME  PRINT"  System Reset "
               CR PRINT"  Restoring Running Parameters from Clock Memory " CR
               .GTL CR              --- print tank level
             THEN
@@ -539,15 +527,13 @@ pub doit
         IF                                            --- check for halt or fault code
             ALLSTOP                                   --- stop everything
             TRUE fflag !                              --- turn on fault lights
-            LOG? IF CR .TIME PRINT" : System Halted"  --- system halted
-              CR PRINT" Last Fault: "
+            LOG? IF CR .TIME PRINT"  System Halted"  --- system halted
+              CR PRINT" Last Fault "
             THEN
             LOG? IF
               LSTF C@  showfault                      --- call the word to show fault text
             THEN       
         ELSE
-            LOG? IF CR 
-            THEN
             STATE                                      --- run the state machine
         THEN
     THEN     
@@ -628,6 +614,7 @@ pub startit
  
 { stop the sytem }
 pub stopit
+    CR PRINT" ***** System is Stopped ***** " CR
     ALLSTOP                    --- turn everything off
     0 keypoll W!               --- disable keypoll calling nstps
 ;
