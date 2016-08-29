@@ -192,24 +192,13 @@ pub SETTIMES
   return flag given two vars set in minutes,
   "daybegin" and "dayend" this routine determines if it's day or night
 }
+
 pub DAY?   (  -- flg )
-    SETTIMES                         --- update daybegin and dayend vars
-    daybegin W@ dayend W@   <   
-    IF                               --- this case we are in the same 0 to 1440 time span  
-        MINUTES@  daybegin W@ =>  
-        IF  
-            MINUTES@ dayend W@ <=     --- return true or false
-        ELSE
-            FALSE
-        THEN
-    ELSE                             --- this case we cross the midnight clock time
-        MINUTES@   daybegin W@  =>
-        IF  
-            TRUE
-        ELSE
-            MINUTES@ dayend W@  <=    --- return true of false
-        THEN
-    THEN
+    SETTIMES				--- update daybegin and dayend vars
+    MINUTES@  daybegin W@ =>		--- start?
+    MINUTES@ dayend W@ <=		--- but not end?
+    daybegin W@ dayend W@   <		
+    IF AND ELSE OR THEN
 ;
 
 { show day begin and day end is absolute minutes }
@@ -300,47 +289,17 @@ pub LIGHTS  ( ON / OFF -- message to terminal )
 ;
 
 { change to next state and set time in this state }
-pub NEXTSTATE   ( -- )
-    DAY?
-    IF                                            ---  it's day time
-        LSTS C@ ebbs =                            ---  determine the next state change for day cycle
-        IF
-            flows  LSTS C!                        ---  change state to  flow and flow day time
-            OFF EBBPUMP                           ---  make sure the ebb pump is off during state change
-            FLTD C@  LSTT C!                      ---  set the time for this state
-            LOG? IF CR .TIME  PRINT"  State change to day flow "
-              .TLS                                ---  print time in state
-              .GTL                                ---  print tank level
-            THEN
-        ELSE
-            ebbs LSTS C!                          ---  state change to ebb
-            OFF FLOWPUMP                          ---  make sure the pump pump is off during state change
-            EBTD  C@ LSTT C!
-            LOG? IF CR .TIME  PRINT"  State change to day ebb "
-              .TLS
-              .GTL
-            THEN
-        THEN
-    ELSE                                          ---  it's night time, stay warm
-        LSTS C@ ebbs =                            ---  determine the next state change for night cycle
-        IF
-            flows LSTS C!                         ---  change state to  flow and flow night time
-            OFF EBBPUMP                           ---  make sure the ebb pump is off during state change
-            FLTN C@  LSTT C!                      ---  set the time for this state
-            LOG? IF CR .TIME  PRINT"  State change to night flow "
-              .TLS 
-              .GTL
-            THEN
-         ELSE
-            ebbs LSTS C!                          ---  state change to ebb
-            OFF FLOWPUMP                          ---  make sure the flow pump is off during state change
-            EBTN  C@ LSTT C!
-            LOG? IF CR .TIME  PRINT"  State change to night ebb "
-              .TLS 
-              .GTL
-            THEN
-        THEN
-   THEN
+pub ebb? ( -- flg )	LSTS C@ ebbs = ;
+
+pub NEXTSTATE   ( -- )    				 
+    ebb? IF OFF EBBPUMP FLTD ELSE OFF FLOWPUMP EBTD THEN C@ LSTT C! 
+    ebb? IF flows ELSE ebbs THEN LSTS C!				--- toggle ebb/flow
+    LOG? IF 
+      CR .TIME PRINT" State Change to " 
+        DAY? IF PRINT" day " ELSE PRINT" night " THEN
+        ebb? IF PRINT" ebb " ELSE PRINT" flow " THEN
+	.TLS .GTL
+    THEN
 ;
 
 { run the ebb cycle }
