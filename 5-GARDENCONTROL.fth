@@ -240,13 +240,13 @@ pub .ON/OFF ( on/off -- print ON or OFF )
 
 { helper word to print level of tank } 
 pub .GTL ( -- print tank level ) 
-  PRINT" Tank Level  " gtl@ . CR 
+  LOG? IF PRINT" Tank Level  " gtl@ . CR THEN
 ;
 
 
 { helper word to print time left in this state of tank } 
 pub .TLS ( -- print time left in this state  ) 
-    CR  PRINT" Time Left  " LSTT C@ . PRINT"  Minutes " CR
+    LOG?  IF CR  PRINT" Time Left  " LSTT C@ . PRINT"  Minutes " CR THEN
 ;
 
 { equipment action words  }
@@ -302,6 +302,22 @@ pub NEXTSTATE   ( -- )
     THEN
 ;
 
+pub .EBBWLD  ( -- ebb water low dwell message )
+ LOG? IF CR .TIME PRINT"  EBB Water Low, Dwell TIme Left  " ebbdwell @ 1000 U/ . CR THEN
+;
+
+pub .EBBWLF ( -- ebb water low filling message )
+ LOG? IF CR .TIME PRINT"  EBB Water Low, filling " CR THEN
+;
+
+pub .EBBWLN ( -- ebb water level nominal message )
+ LOG? IF CR  PRINT" EBB Water Nominal "  CR THEN
+;
+
+pub .EBBRD  ( -- ebb dwell reset message )
+ LOG? IF  .TIME PRINT"  Reset EBB Dwell Timer Set Pump OFF " CR THEN
+;
+
 { run the ebb cycle }
 pub EBB
     gtl@   EBHL C@ =>
@@ -311,7 +327,8 @@ pub EBB
         IF
             TRUE edsflag !                        --- reset ebb the dwell timer flag
             EDWL C@  #60000 * ebbdwell   TIMEOUT   --- set the dwell timer
-            LOG? IF CR .TIME PRINT"  Reset EBB Dwell Timer Set Pump OFF " CR .GTL THEN
+            .EBBRD
+            .GTL
         THEN
     ELSE
         gtl@ EBLL C@  <=                            --- ebb water below low level setting ?    
@@ -320,17 +337,21 @@ pub EBB
             IF
                 ON EBBPUMP                         --- ebb pump back on
                 FALSE edsflag !                   --- reset ebb dwell timer flag
-                LOG? IF CR .TIME PRINT"  EBB Water Low, filling "  CR
-                   .GTL
-                THEN
+                .EBBWLF
+                .GTL
+                --- LOG? IF CR .TIME PRINT"  EBB Water Low, filling "  CR
+                ---    .GTL
+                --- THEN
             ELSE
-                LOG? IF CR .TIME PRINT"  EBB Water Low, Dwell TIme Left  " ebbdwell @ 1000 U/ . CR .GTL THEN
+                .EBBWLD
+                .GTL
+             ---   LOG? IF CR .TIME PRINT"  EBB Water Low, Dwell TIme Left  " ebbdwell @ 1000 U/ . CR .GTL THEN
             THEN
         ELSE
-            LOG? IF CR  PRINT" EBB Water Nominal "  CR .GTL
-              .EBBPUMP  
-              .TLS
-            THEN
+          .EBBWLN
+          .GTL
+          .EBBPUMP  
+          .TLS
         THEN
     THEN
 ;
