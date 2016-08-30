@@ -16,7 +16,8 @@
 \ 160822 dp  using new extend.fth resolve errors of I2C arbitration  V1.1
 \ 160823 dp  okay complete rewrite to remove this module as a task and it is used in keypoll to read,
 \ accumulate, error check and condition data for use in PSI@ word. V1.2 
-
+\ 160829 dp  fixed stack comments, for result stack,  the top most item is FARTHEST RIGHT!!!!
+\            see PSI@,  thanks Peter
 \ driver must protect from these errors
 \	Status 0 = good data *** OR *** sensor grounded out = Status 0 reading -8192
 \	Status 1 = resevered bad data
@@ -28,7 +29,7 @@
  
 TACHYON
 FORGET DLVR-L30D.fth
-pub    DLVR-L30D.fth  ." DLVR-L30D PSI Sensor v1.2 160823.1330" ;
+pub    DLVR-L30D.fth  ." DLVR-L30D PSI Sensor v1.3 160829.2100" ;
  
 DECIMAL
 [~ 
@@ -131,7 +132,7 @@ pub PSI.GET
   
 ;
 
-pub PSI@ ( -- Status inches tenths )
+pub PSI@ ( --  tenths inches Status )
         PSIFLT @  
         DPAVG @ 10 / DUP 10 / swap 10 MOD SWAP  ROT
        
