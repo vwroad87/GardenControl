@@ -10,7 +10,11 @@
 \   dp 160824         updated to use DS3232M RTC Ram to save and restore runtime params  0.91
 \   dp 160826         cleaned up code and comments, reduced memory allocation to 22 bytes for runtime struct
 \   dp 160828         added Peter's techniques,  clean up the code more, ready for live testing again v.93
-
+\   dp 160829         Peter located a bug in LSTF being a byte but using a Long store !  fortunately 
+\                     this write would only happen with a sensor error but could flood the floor :)
+\                     Also changed runtime allocation of runtime parameters to rntmram to avoid collions with 
+\                     kernel TIMERS runtime word, ouch   V0.94
+\                     More Bugs found in PSI@ usage,  V0.95 checkin for maintenace
 TACHYON
 [~
 
@@ -20,7 +24,7 @@ IFNDEF DLVR-L30D.fth
 }
 
 FORGET GARDENCONTROL.fth
-pub  GARDENCONTROL.fth   PRINT" Garden Control P8 160828 1100 V0.93          " ;
+pub  GARDENCONTROL.fth   PRINT" Garden Control P8 160829 2000 V0.95          " ;
 
 { ***** equipment I/O assignments ********* }
 #P18 == flowp         --- flow pump
@@ -73,9 +77,9 @@ pub g--   ( -- )    --- turn data logging to the screen off
 ;
 
 
-{ runtime structure stored in DS3232 SRAM }
-22 BYTES runtime     \ allocate memory for #22 bytes
-runtime ORG    
+{ runtime structure "rntmram" stored in DS3232 SRAM }
+22 BYTES rntmram     \ allocate memory for #22 bytes
+rntmram ORG    
     1 DS HALT      --- halt byte TRUE do not run
     1 DS LSTS      --- Last state running
     1 DS LSTT      --- Last state running time in minutes
@@ -101,34 +105,34 @@ runtime ORG
 
 
 
-{  new routines to save and restore runtime to RTC ram }
+{  new routines to save and restore rntmram to RTC ram }
 
-pub SETRUNTIME    \ Write ram/eeprom of RTC from runtime structure
-   \ Write runtime structure to ram of RTC 
+pub SETRUNTIME    \ Write ram/eeprom of RTC from rntmram structure
+   \ Write  rntmram structure to ram of RTC 
     @rtc 0 >
     IF
       I2CSTART @rtc I2C! $14 I2C!
-      runtime ramlen ADO I C@ I2C! LOOP
+      rntmram ramlen ADO I C@ I2C! LOOP
       I2CSTOP
     THEN
 ;
 
-pub GETRUNTIME     \ Read ram/eeprom of RTC and set runtime structure
-   \ Read ram of RTC into runtime structure
+pub GETRUNTIME     \ Read ram/eeprom of RTC and set rntmram structure
+   \ Read ram of RTC into rntmram structure
     @rtc 0 >
     IF
       I2CSTART @rtc I2C! $14 I2C! I2CREST @rtc 1+ I2C!
-      runtime ramlen ADO 0 I2C@ I C! LOOP 1 I2C@ DROP
+      rntmram ramlen ADO 0 I2C@ I C! LOOP 1 I2C@ DROP
       I2CSTOP
     THEN
 ;
 
-{ show what is in runtime program memory currently }
+{ show what is in rntmram program memory currently }
 pub showit
     ramlen 0 DO
         CR I 2* 2* " HALTLSTSLSTTEBHLEBLLEDWLFLHLFLLLFDWLEBTDEBTNFLTDFLTNHRSDMINDDURHDURMLSTFWLMNWLMXSENFSENC" + 4 CTYPE
         PRINT" : "
-        runtime I + C@ .
+        rntmram I + C@ .
     LOOP
 ; 
  
@@ -161,13 +165,13 @@ pub setdefaults
 ;
 --- }
  
-{ display whats in the runtime table }
+{ display whats in the rntmram table }
 pub showram
-    runtime ramlen ADO   CR I C@ . LOOP
+    rntmram ramlen ADO   CR I C@ . LOOP
 ;
-{ word to clear runtime table }
+{ word to clear rntmram table }
 pub clearram
-    runtime ramlen ADO  0   I  C!  LOOP
+    rntmram ramlen ADO  0   I  C!  LOOP
 ;
 
 { get time of day in minutes }
@@ -209,19 +213,15 @@ pub showdays
 
 { Get tank level in tenths of inches, i.e. 50 is 5 inches }
 pub GetTankLevel (  -- level )
-testm @  IF             --- check for test mode, if so just return the tanklevel
-  tanklevel @
-ELSE                    --- else live reading from the psi senor
     PSI@                --- PSI@ from DLVR-L30D module returns status, inches, 10ths of inches 
-                        --- convert to tenths
-    0=  IF
+    DUP 0=  IF          --- dup the status code from the sensor
+      DROP              --- okay good reading, drop the 0 status DUP
       10 * +         
-      DUP tanklevel !   --- set to tanklevel long  and return copy
+      DUP tanklevel !   --- set to tanklevel long and return copy
     ELSE
-      SENF C@ LSTF !    ---  set the sensor flaut code
-      2DROP             --- drop the other returned values from PSI@
+      SENF C@ LSTF C!   ---  not zero set the sensor flaut code
+      2DROP             ---  drop the other returned values from PSI@
     THEN
-THEN
 
 ;
 ALIAS GetTankLevel gtl@                       --- fetch the tank level
@@ -259,7 +259,9 @@ pub FLOWPUMP  ( ON / OFF -- message to terminal )
 
 { return terminal message of flow pump status }
 pub .FLOWPUMP  ( -- terminal message on or off )
-    flowp PIN@ CR PRINT" Flow Pump is " IF PRINT" ON " ELSE PRINT" OFF " THEN
+    LOG? IF 
+      flowp PIN@ CR PRINT" Flow Pump is " IF PRINT" ON " ELSE PRINT" OFF " THEN
+    THEN
 ;
 
 { control ebbpump }
@@ -271,7 +273,9 @@ pub EBBPUMP  ( ON / OFF -- message to terminal )
 
 { return terminal message of ebb pump status }
 pub .EBBPUMP  ( -- terminal message on or off )
-    ebbp PIN@ CR PRINT" Ebb Pump is " IF PRINT" ON " ELSE PRINT" OFF " THEN
+    LOG? IF 
+      ebbp PIN@ CR PRINT" Ebb Pump is " IF PRINT" ON " ELSE PRINT" OFF " THEN
+    THEN
 ;
 
 { control circulation pump }
@@ -326,7 +330,7 @@ pub EBB
         edsflag @ FALSE =                         --- set dwell timer one time
         IF
             TRUE edsflag !                        --- reset ebb the dwell timer flag
-            EDWL C@  #60000 * ebbdwell   TIMEOUT   --- set the dwell timer
+             EDWL C@  #60000 * ebbdwell   TIMEOUT   --- set the dwell timer
             .EBBRD
             .GTL
         THEN
@@ -397,8 +401,8 @@ pub  STATE   ( -- )
     MINUTE?   
     IF
         DAY? LIGHTS            --- control the lights from here, checking everything minute
-        SETRUNTIME             --- each minute store running parameters to DS3231 eeprom 
-        --- LOG? IF CR PRINT" Storing Parameters to DS3231 EEPROM " 
+        SETRUNTIME             --- each minute store running parameters to DS3231 SRAM 
+        --- LOG? IF CR PRINT" Storing Parameters to DS3231 SRAM " 
         --- THEN
         LSTT C@ 1- 0 <=        --- calc last state running time on minute tick check for time out
         IF
@@ -431,10 +435,13 @@ pub HALT? ( -- 0 / non zero )
 
 { do we have any fautls }
 pub LSTF?  ( -- true/false )
-    PSI@  #85 =  IF                        --- status is 85 fault code, sensor grounded, retry failures
+    PSI@ DUP                        ---- status status inches 10ths    4 items on the stack here
+    #85 =  IF                        --- status is 85 fault code, sensor grounded, retry failures
         SENF LSTF C!                       --- write the water level sensor fault code
+        2DROP                              --- drop the 2 other items from PSI@
+    ELSE
+       DROP DROP DROP                      --- drop everything 
     THEN
-    2DROP                                  --- drop the other return readings from PSI@
     
     WLMX C@                                --- waterlevel max ?
     gtl@ < IF WLHF LSTF C! THEN             ---  water level high fault
@@ -530,7 +537,7 @@ pub sysinit  ( -- )   --- initialize the system
     CR PRINT" Setting Time from DS3231 " CR
     .DT                          --- set the kernel rtc from the DS3231  
     CR PRINT" Restoring System Running Parameters from DS3231 EEPROM "
-    GETRUNTIME                   --- get current runtime parameters from DS3231 eeprom 
+    GETRUNTIME                   --- get current rntmram parameters from DS3231 eeprom 
     10 ms
     CR PRINT" Starting System" CR
     CR PRINT" Circ Pump Started "
@@ -574,7 +581,7 @@ pub nstps
     pcntr @                --- get the read psi sensor counter
     0=                     --- at zero
     IF
-        #5000 pcntr !      --- reset counter and read sensor
+        #2500 pcntr !      --- reset counter and read sensor
         PSI.GET            --- run the PSI Sensor often from the DLVR-L30D.fth driver to read sensor
     ELSE
         pcntr --           --- decrement counter 
@@ -594,9 +601,11 @@ pub startit
  
 { stop the sytem }
 pub stopit
-    CR PRINT" ***** System is Stopped ***** " CR
+    CR CR CR
+    PRINT" ***** System is Stopped ***** " CR
     ALLSTOP                    --- turn everything off
     0 keypoll W!               --- disable keypoll calling nstps
+    CR CR CR
 ;
 
 --- AUTORUN startit            --- auto-start the system
