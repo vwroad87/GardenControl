@@ -284,7 +284,7 @@ pri RES@ ( -- res ) --- Continue reading until a response is received (with time
 
 --- 141202 - added ?SPIO to save 120us each CMD by checking to see if SPIO parameters need to be reloaded
 [SPIO]
-' RUNMOD COG@		== @RUNMOD
+' RUNMOD COG@	9BITS	== @RUNMOD
 @RUNMOD COG@		== =SPIO PRIVATE    --- SPIO  signature
 
 pri ?SPIO        @RUNMOD COG@ =SPIO <> IF [SPIO] sdpins @ MODPINS THEN ;
@@ -357,9 +357,9 @@ pri _!SD
     ocr ~
     cid 16 ERASE csd 16 ERASE
      0 FILE
-    SDBUF BLKSIZ 2* 2* ERASE		--- erase all 4 file buffers
-     sectors 16 -1 FILL			--- force an invalid sector (nothing cached)
-\    sdpins @ _SDPINS                   --- reload SDPINS in case this is a reboot & !SDIO
+    SDBUF BLKSIZ 2* 2* ERASE				--- erase all 4 file buffers
+     sectors 16 -1 FILL					--- force an invalid sector (nothing cached)
+\    sdpins @ _SDPINS					--- reload SDPINS in case this is a reboot & !SDIO
      !SDIO
     _CARD?
     IF
@@ -386,7 +386,7 @@ pri _!SD
     THEN
     &SDCS OUTSET
      OFF SDBSYLED
-     DUP 0= SDERRLED                --- indicate an error visually if enabled
+     DUP 0= SDERRLED					--- indicate an error visually if enabled
     ;
 
 --- 141114 deprecated card info diagnostics
@@ -394,18 +394,18 @@ pri _!SD
 { *** BLOCK BUFFERS *** }
 
 --- card has been prep'd for read  - proceed and read a block of data
-pub SDRDBLK ( dst -- crc )            --- dst is the HUB address of an SD buffer, SDBUF  gives active one
-    (SDRD)                    --- special fast read module
-    [SPIO]                    --- switch back to standard SPI mode (for commands etc)
-    SD2@                        --- read crc
-    31d MASK OR                    --- force crc as TRUE flag (msb set)
+pub SDRDBLK ( dst -- crc )				--- dst is the HUB address of an SD buffer, SDBUF  gives active one
+    (SDRD)						--- special fast read module
+    [SPIO]						--- switch back to standard SPI mode (for commands etc)
+    SD2@						--- read crc
+    31d MASK OR						--- force crc as TRUE flag (msb set)
     ;
 
 
 pri PROCESS_TOKEN    ( dst token -- crcflg )
-     =dtk = IF SDRDBLK EXIT THEN        --- read a block of data
-    2DROP                        --- drop token and dst
-    2 SDCLK STAT@ DROP            --- discard cycles
+     =dtk = IF SDRDBLK EXIT THEN			--- read a block of data
+    2DROP						--- drop token and dst
+    2 SDCLK STAT@ DROP					--- discard cycles
     &SDCS OUTSET
     FALSE
     ;
@@ -418,15 +418,15 @@ pub SDRD    ( sector dst -- crc | false ; Read sector from SD into dst )
      sdtask C@ IF "R" SDCMD EXIT THEN
 pri _SDRD
     ON SDBUSY
-    SWAP #17 CMD ( data cmd -- res )    --- read block command
+    SWAP #17 CMD ( data cmd -- res )			--- read block command
       IF
-        DROP FALSE                --- didn't like that command - discard dst & return false
+        DROP FALSE					--- didn't like that command - discard dst & return false
       ELSE
-        RES@ PROCESS_TOKEN            --- process read token and read block
+        RES@ PROCESS_TOKEN				--- process read token and read block
        THEN
-    OFF SDCS                --- release the SD card
+    OFF SDCS						--- release the SD card
     OFF SDBUSY
-    DUP sdrd !                   ---  save crc/flg
+    DUP sdrd !						---  save crc/flg
     ;
 
 
@@ -438,14 +438,14 @@ pub SDWR    ( src sect -- flg ; Write from src to xdst in the SD )
      sdtask C@ IF "W" SDCMD EXIT THEN
 pri _SDWR
     ON SDBUSY
-    OFF SDCS 1 SDCLK                 --- finish off previous
-     ON SDCS 3 SDCLK                --- Prep card
-    #24 CMD ( src res )                --- write block command
+    OFF SDCS 1 SDCLK					--- finish off previous
+     ON SDCS 3 SDCLK					--- Prep card
+    #24 CMD ( src res )					--- write block command
     0=
       IF
          3 SDCLK =dtk SD!
-        BLKSIZ [SDWR] RUNMOD            --- Write sector
-        [SPIO]                    --- switch back to normal SPI mode
+        BLKSIZ [SDWR] RUNMOD				--- Write sector
+        [SPIO]						--- switch back to normal SPI mode
         0 MARKER? $FF MARKER? AND
         ELSE FALSE
       THEN
@@ -469,7 +469,7 @@ Read the sector into the SDBUF
 takes around 1.9ms, 2.55ms
 }
 pub SECTOR ( sect -- )
-     DUP _sector !                     --- update sector pointer for this file channel
+     DUP _sector !					--- update sector pointer for this file channel
      SDBUF SDRD _scrc !
      ;
 

@@ -599,7 +599,7 @@ pub LONGFILL ( addr cnt longval -- 	\ Fill longs at addr for long cnt with longv
 
 pub KEY@ ( -- keycode )		lastkey C@ ;
 
-pub KEY! ( keycode -- )		lastkey 1+ C! ;
+pub KEY! ( keycode -- )		delim 13 + C! ;
 
 \ Wait for a period and if no key is received then return with a null
 \ wait timer = wait*42us so #225 = 10ms
@@ -2235,7 +2235,7 @@ pub I2CPINS ( sda scl -- \ Assign the pins to use for the I2C bus )
 
 
 --- wait but timeout while busy
-pub ?I2C	10,000 BEGIN 1- i2cflg C@ 0= OVER 0= OR UNTIL DROP 0 i2cflg C! ;
+pub ?I2C	1500 BEGIN 1- i2cflg C@ 0= OVER 0= OR UNTIL DROP 0 i2cflg C!  ;
 
 { I2C START CONDITION also makes I2C pins outputs
  SCL --------------_______
@@ -2758,10 +2758,14 @@ link->TIMER3->TIMER2->TIMER1->0
 pub TIMEOUT ( ms addr -- \ Set the timeout period in ms for this timer - link and init if not already set )
  	SWAP OVER ! --- set it and link it if it has not been linked yet
 pri +TIMER ( addr -- )
- 	DUP 8 + C@ tid C@ = IF DROP EXIT THEN --- discard and ignore if already linked
- 	tid C@ OVER 8 + C! --- set tid
-   	timers W@ OVER 6 + W! --- link in new timer (first one is set to 1 )
- 	timers W! --- save latest in timers
+	--- discard and ignore if already linked
+ 	DUP 8 + C@ tid C@ = IF DROP EXIT THEN
+	--- set tid		
+ 	tid C@ OVER 8 + C!
+	--- link in new timer (first one is set to 1 )
+   	timers W@ OVER 6 + W!
+	--- save latest in timers
+ 	timers W!
 	;
 
 pub COUNTUP ( addr -- \ countup timer mode )
@@ -2777,6 +2781,7 @@ IFDEF EXPLORER
 \ List the timers and their status
 pub .TIMERS
       SPACE CLKFREQ ttint / ." ticks = 1/" 0 PRINTDEC
+      ."  runtime = " runtime @ 0 PRINTDEC
  	timers W@
  	BEGIN
  	  DUP $FF >
@@ -3039,6 +3044,7 @@ pub +POLL ( cfa -- )
  	polls 16 ADO DUP I W@ = IF LEAVE ELSE I W@ 0= IF DUP I W! LEAVE THEN THEN 2 +LOOP DROP
  	' ?POLL keypoll W!
 	;
+pub !POLLS	polls 16 ERASE keypoll W~ ; 
 
 
 --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
@@ -3646,9 +3652,9 @@ $1F00		== romsz
 " .ROM" U@	== .rom
 
 pub lsroms
-	roms E@
-	IF " ROMS" DUP PRINT$
-	  U@ .rom roms
+	roms E@ " ROMS" U@ =
+	IF " ROMS" PRINT$
+	  .rom roms
 	BEGIN DUP E@ 3RD =
 	  IF ( ROMS PTR )
 	   CR DUP 4 + EW@ .DEC SPACE DUP 6 + 10 ADO I EC@ EMIT LOOP
@@ -3712,9 +3718,7 @@ IFDEF SPLASH SPLASH }
 pub EXTEND.boot
 	RND boot !
  	resets EW@ 1+ resets EW!
- 	keypoll W~ 							--- stop any background polling in case it's been locked in
- 	polls 16 ERASE
-
+ 	!POLLS
 	' TIMERTASK 2 RUN						--- always run this in this cog
  	Q DECIMAL
 	ESC? NOT	 						--- abort uboot if escape has been pressed
