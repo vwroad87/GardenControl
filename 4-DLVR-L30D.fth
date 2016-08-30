@@ -16,8 +16,7 @@
 \ 160822 dp  using new extend.fth resolve errors of I2C arbitration  V1.1
 \ 160823 dp  okay complete rewrite to remove this module as a task and it is used in keypoll to read,
 \ accumulate, error check and condition data for use in PSI@ word. V1.2 
-\ 160829 dp  fixed stack comments, for result stack,  the top most item is FARTHEST RIGHT!!!!
-\            see PSI@,  thanks Peter
+\ 160830 dp  Peter found a bug, I was sending an ACK on the 4th byte instead of NAK, this routine is now called by a timer in GardenControl.fth
 \ driver must protect from these errors
 \	Status 0 = good data *** OR *** sensor grounded out = Status 0 reading -8192
 \	Status 1 = resevered bad data
@@ -29,7 +28,7 @@
  
 TACHYON
 FORGET DLVR-L30D.fth
-pub    DLVR-L30D.fth  ." DLVR-L30D PSI Sensor v1.3 160829.2100" ;
+pub    DLVR-L30D.fth  ." DLVR-L30D PSI Sensor v1.3 160830.0930" ;
  
 DECIMAL
 [~ 
@@ -76,35 +75,27 @@ pub II2C! ( data --  )              \ write a byte to the I2C bus but ignore the
 
 
 { read data from the device, free running read only device }
+
     
 pub DLVR@ (  --  )            \ sets the RESULT long 
-  mSDA mSCL I2CPINS           \ use private i2c bus
-  I2CSTART                    \ starts the bus
-  psir II2C!
-  ackI2C@                     \ read first byte, ack 0
-  #24 <<                      \ shift left into MSB
-  ackI2C@                     \ read 2ND byte, ack 0
-  #16 <<                      \ shift left into 2ND byte
-  OR                          \ accumulate
-  ackI2C@                     \ read 3RD, ack 0
-  8 <<                        \ shift into 3RD byte
-  OR                          \ accumulate
-  ackI2C@                     \ read 4TH byte, ack 0
-  OR                          \ accumulate
-  RESULT !                    \ store it
-  I2CSTOP                     \ stop the bus
-  EEPROM
+	mSDA mSCL I2CPINS           \ use private i2c bus
+	I2CSTART                    \ starts the bus
+	psir  II2C!
+	ackI2C@ 8<<
+	ackI2C@ OR 8<<
+	ackI2C@ OR 8<<              \ shift into 3RD byte
+	1 I2C@ OR                   \ read 4TH byte, DON'T ACK
+	RESULT !                    \ store it
+	I2CSTOP                     \ stop the bus
+	EEPROM
 ;
 
 \  TASK Allocations 
-#16 LONGS psibuff                   --- circ buffer allocation
-BYTE psiptr                         --- buffer pointer
-long PSIFLT                        --- fault code result
-LONG DPSI, DSTATUS, DTEMP, DPAVG, DRETRY   --- result variables
-
-
-0 PSIFLT !
-0 psiptr C! 
+#16 LONGS psibuff				--- circ buffer allocation
+BYTE psiptr					--- buffer pointer
+long PSIFLT					--- fault code result
+LONG DPSI, DSTATUS, DTEMP, DPAVG, DRETRY	--- result variables
+ 
 
 pub PSI.GET
       DLVR@
@@ -132,10 +123,9 @@ pub PSI.GET
   
 ;
 
-pub PSI@ ( --  tenths inches Status )
+pub PSI@ ( --  tenths inches  Status )
+        DPAVG @ 10 / DUP 10 / swap 10 MOD SWAP
         PSIFLT @  
-        DPAVG @ 10 / DUP 10 / swap 10 MOD SWAP  ROT
-       
 ;
 
 pub PSIDBug@ ( --- Status PSI ) 
@@ -161,7 +151,4 @@ pub showbuff   \ show what's in the circular buffer
 
 ]~
 END
-
-
-
 
