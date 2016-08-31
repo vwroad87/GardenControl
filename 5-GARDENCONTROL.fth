@@ -14,6 +14,7 @@
 \                     I'm still learning, got a great lesson sharing my code and how to debug stack issues
 \                     This code needs clean up and proper annotation but seems really stable
 \                     Checkin at V1.0,  Thanks to all
+\   dp 160830         Cleanup of code comments,  removed some unused variables and routines, added ^L and ^K to for on/off logging
 
 \                     
 TACHYON
@@ -25,7 +26,7 @@ IFNDEF DLVR-L30D.fth
 }
 
 FORGET GARDENCONTROL.fth
-pub  GARDENCONTROL.fth   PRINT" Garden Control PBJ-8 160830 1000 V1.0          " ;
+pub  GARDENCONTROL.fth   PRINT" Garden Control PBJ-8 160830 1900 V1.1          " ;
 
 
 \ : TP		PRINT" <TP @" DEPTH . PRINT" >" ;
@@ -69,8 +70,6 @@ pub .TASKS ( -- \ List tasks )
 
 }
 
-
-
 { ***** equipment I/O assignments ********* }
 --- pins named with * prefix to indicate PIN CONSTANT plus avoid conflicts with upper/lower cases
 #P18 == *flow		--- flow pump
@@ -89,9 +88,6 @@ pub .TASKS ( -- \ List tasks )
 1 == WLSF            --- water level sensor fault, lets shutdown if the water level sensor fails
 2 == WLHF            --- water level high fault,  are we over flowing the tank
 4 == WLLF            ---  water level low fault,   did it all leak out
-{ timers }
-TIMER  ebbdwell      --- timer to rest at ebb dwell until filling tank to ebb max level
-TIMER  flowdwell     --- timer to rest at flow dwell until emptying tank to flow min level  
 
 { *********** some variables *************** }
 WORD now             --- minutes of day now
@@ -102,10 +98,12 @@ LONG edsflag         --- flag for ebb dwell setting
 LONG fflag           --- fault flag
 LONG lightflag       --- just turn on the fault light once
 LONG _log            --- true false to display logging to screen
-LONG testm           --- on off flag for setting system in test mode
-TIMER statetmr           --- loop counter for keypoll pacing of state machine
-TIMER dlvrtmr           --- loop counter for keypoll pacing of calls to PSI.GET from DLVR-L30D.fth module
 LONG tanklevel       --- current tank level
+{ timers }
+TIMER statetmr       --- timer for pacing of state machine
+TIMER dlvrtmr        --- timer for pacing of calls to PSI.GET from DLVR-L30D.fth module
+TIMER  ebbdwell      --- timer to rest at ebb dwell until filling tank to ebb max level
+TIMER  flowdwell     --- timer to rest at flow dwell until emptying tank to flow min level  
 
 
 pub LOG? ( -- flag ) --- return logging flag on or off
@@ -182,7 +180,6 @@ pub showit
 ; 
  
 { default setup parameters if not set }
---- IFDEF SETDEFAULT
 pub setdefaults
     FALSE HALT C!      --- start in running state
     flows LSTS C!      --- last state, in flow day state
@@ -206,9 +203,7 @@ pub setdefaults
     #90 WLMX  C!       --- high water level that trips fault code WLHF
     #85 SENF   C!      --- set this constat reading with water sensor no air
     0  SENC C!         --- set this water sensor calibration
-    3 tanklevel !      --- testing variable for tank level simulation
 ;
---- }
  
 { display whats in the runtime table }
 pub showram
@@ -257,23 +252,16 @@ pub showdays
 
 { Get tank level in tenths of inches, i.e. 50 is 5 inches }
 ( GetTankLevel )
-pub gtl@ (  -- level )
-	--- check for test mode, if so just return the tanklevel
-	--- PSI@ from DLVR-L30D module returns status, inches, 10ths of inches  
+pub gtl@ (  -- level )  
      PSI@ ( -- Status inches tenths )               
-	--- convert to tenths                    
-     0=  IF
+     0=  IF                   --- convert to tenths                    
        10 * + ( tenths )         
-	--- set to tanklevel long  and return copy
-       DUP tanklevel !   
+       DUP tanklevel !        --- set to tanklevel long  and return copy
      ELSE ( status inches )
-	---  set the sensor flaut code (fix LSTF ! bug )
-       SENF C@ LSTF C!    
-	--- drop the other returned values from PSI@
-       2DROP  FALSE            
+       SENF C@ LSTF C!        ---  set the sensor flaut code 
+       2DROP  FALSE           --- drop the other returned values from PSI@
      THEN
 ;
-
 
 
 { tank level set value helper for testing }
@@ -340,11 +328,13 @@ pub LIGHTS  ( ON / OFF -- message to terminal )
     DROP    --- if logging is off we need to drop 
 ;
 
-
+{ are we in ebb }
 pub ebb? ( -- flg )	LSTS C@ ebbs = ;
---- toggle ebb/flow 
+
+{ toggle ebb/flow }
 pub ebb/flow		ebb? IF flows ELSE ebbs THEN LSTS C! ;
 
+{ display ebb or flow to terminal }
 pub .ebb/flow		IF PRINT" ebb " ELSE PRINT" flow " THEN ;
 
 { change to next state and set time in this state }
@@ -358,51 +348,59 @@ pub NEXTSTATE   ( -- )
     THEN
 ;
     
-
+{ at the ebb full level, set the dwell time if not set }
 pub EBBFULL
         OFF EBBPUMP                                --- turn the pump off
-        edsflag @ FALSE =                         --- set dwell timer one time
+        edsflag @ FALSE =                          --- set dwell timer one time
         IF
-            TRUE edsflag !                        --- reset ebb the dwell timer flag
+            TRUE edsflag !                         --- reset ebb the dwell timer flag
             EDWL C@  #60000 * ebbdwell   TIMEOUT   --- set the dwell timer
             LOG? IF CR .TIME PRINT"  Reset EBB Dwell Timer Set Pump OFF " CR .GTL THEN
         THEN
 ;
+
+{ at the ebb low level, set the dwell time if not set }
 pub EBBLOW
 	ebbdwell TIMEOUT?                      --- has the dwell timer elapsed?
 	IF
-          ON EBBPUMP                         --- ebb pump back on
-          FALSE edsflag !                   --- reset ebb dwell timer flag
+          ON EBBPUMP                           --- ebb pump back on
+          FALSE edsflag !                      --- reset ebb dwell timer flag
 	  LOG? IF CR .TIME PRINT"  EBB Water Low, filling "  CR .GTL THEN
 	ELSE
             LOG? IF CR .TIME PRINT"  EBB Water Low, Dwell TIme Left  " ebbdwell @ 1000 U/ . CR .GTL THEN
 	THEN
 ;
+
+{ when ebb level is within set points display this message }
 pub EBBOK
 	LOG? IF CR  PRINT" EBB Water Nominal "  CR .GTL .EBBPUMP .TLS THEN
 ;
+
 { run the ebb cycle }
 pub EBB
     gtl@   EBHL C@ =>
     IF 
       EBBFULL                                            --- ebb water full ?
     ELSE
-    gtl@ EBLL C@  <=					--- ebb water below low level setting ?    
+    gtl@ EBLL C@  <=				         --- ebb water below low level setting ?    
         IF EBBLOW ELSE EBBOK THEN
     THEN
 ;
 
+{ at the flow low level, set the dwell time if not set }
 pub FLOWLOW
         OFF FLOWPUMP                                          --- turn the pump off
         fdsflag @ FALSE =                                     --- set dwell timer one time
         IF
            TRUE fdsflag !                                     --- reset the dwell flag
-           FDWL C@  #60000 * flowdwell TIMEOUT            --- set the dwell timer
+           FDWL C@  #60000 * flowdwell TIMEOUT                --- set the dwell timer
             LOG? IF CR .TIME PRINT"  Reset Flow Dwell Timer Reset Pump OFF " CR .GTL THEN
         THEN
 ;
+
+{ at the flow full level, set the dwell time if not set }
 pub FLOWFULL
-	flowdwell TIMEOUT?                         --- has dwell timer elasped?
+	flowdwell TIMEOUT?                       --- has dwell timer elasped?
 	IF
           ON FLOWPUMP                            --- flow pump back on
           FALSE fdsflag !                        --- reset flow dwell timer flag  
@@ -411,19 +409,23 @@ pub FLOWFULL
 	  LOG? IF CR .TIME PRINT"  FLOW Water High, Dwell TIme Left " flowdwell @ 1000 U/ . CR .GTL THEN
         THEN
 ;
+
+{ when flow level is within set points display this message }
 pub FLOWOK
 	LOG? IF CR  PRINT" Flow Water Nominal " CR .FLOWPUMP .GTL .TLS THEN
 ;
+
 { run the flow cycle }
 pub FLOW
-    gtl@ FLLL C@ <=                                           --- tank <= to flow low level?
-    IF FLOWLOW                                                       --- flow water empty ?
+    gtl@ FLLL C@ <=                                    --- tank <= to flow low level?
+    IF FLOWLOW                                         --- flow water empty ?
     ELSE                                  
         gtl@ FLHL C@  =>                               --- flow water above high level setting ?     
         IF FLOWFULL ELSE FLOWOK THEN
     THEN
 ;
 
+{ run this at each minute interval }
 pub REGULARLY
         DAY? LIGHTS            --- control the lights from here, checking everything minute
         SETRUNTIME             --- each minute store running parameters to DS3231 eeprom 
@@ -438,6 +440,8 @@ pub REGULARLY
             --- LOG? IF CR .TIME PRINT"  Minute Change " THEN
         THEN   
 ;
+
+{ run this in between minute interval }
 pub CONSTANTLY
 	ebb? IF 
 	  LOG? IF CR .TIME PRINT"  Running State  Ebb " .TLS THEN EBB     
@@ -445,6 +449,7 @@ pub CONSTANTLY
           LOG? IF CR .TIME PRINT"  Running State Flow " .TLS THEN FLOW
         THEN     
 ;
+
 { simple state machine, very simple }
 pub STATE   ( -- )
     MINUTE? IF REGULARLY ELSE CONSTANTLY THEN
@@ -455,14 +460,16 @@ pub HALT? ( -- 0 / non zero )
     HALT C@
 ;
 
+{ determine if we have a fault }
 pub LSTF?  ( -- true/false )
     PSI@ #85 =  IF SENF LSTF C! THEN 2DROP
-    
-    WLMX C@                                --- waterlevel max ?
-    gtl@ < IF WLHF LSTF C! THEN             ---  water level high fault
-    
+
+    WLMX C@                             --- waterlevel max ?
+    gtl@ < IF WLHF LSTF C! THEN         ---  water level high fault
+
     WLMN C@                             --- waterlevel low ?
     gtl@  => IF WLLF LSTF C! THEN       ---  water level low fault
+
     LSTF C@				--- return true (value) or false and fault code in var
 ;
 
@@ -485,6 +492,7 @@ pub FAULTLIGHT
     THEN
 ;
 
+{ show which fault we have to the terminal }
 pub showfault ( faultcode -- )                  --- display fault
    SWITCH                                       --- what fault ?
      WLLF case  PRINT" Water too low " BREAK
@@ -494,8 +502,9 @@ pub showfault ( faultcode -- )                  --- display fault
      PRINT" Halt, other fault "  SWITCH@ .
 ;
 
+{ reset the system from DS3232 SRAM saved parameters }
 pub ?Reset
-	*reset LOW? 0EXIT
+	*reset LOW? 0EXIT      --- button is active low
 pub Reset
 	0 LSTF C!              --- reset Last Fault code to zero
         FALSE fflag !          --- reset fault flag
@@ -510,13 +519,14 @@ pub Reset
           .GTL CR              --- print tank level
         THEN
 ;    
+
 { this controls error checking, system recovery from system pin depress
   and calls the state machine
 }
 pub doit
     fflag @
     IF  
-        FAULTLIGHT                 --- turn on the fault light
+        FAULTLIGHT                                   --- turn on the fault light
         LOG? IF CR .TIME PRINT"   Clear Fault and Press Reset to continue" CR .GTL THEN
         ?Reset       
     ELSE  
@@ -525,42 +535,37 @@ pub doit
             ALLSTOP                                   --- stop everything
             TRUE fflag !                              --- turn on fault lights
             LOG? IF 
-	      CR .TIME PRINT"  System Halted"		--- system halted
+	      CR .TIME PRINT"  System Halted"	      --- system halted
               CR PRINT" Last Fault "
             THEN
-            LOG? IF LSTF C@  showfault THEN                     --- call the word to show fault text       
+            LOG? IF LSTF C@  showfault THEN           --- call the word to show fault text       
         ELSE
-            STATE                                      --- run the state machine
+            STATE                                     --- run the state machine
         THEN
     THEN     
 ;
 
-pub systestmode (  ON/OFF  -- )   --- put system in test mode for tank levelA
-    DUP IF 50 tanklevel ! THEN
-    testm !                   --- write on off flag
-;
-       
-pub sysinit  ( -- )   --- initialize the system
+{  initialize the system  }
+pub sysinit  ( -- )  
     CR PRINT" Setting Time from DS3231 " CR
-    .DT                          --- set the kernel rtc from the DS3231  
+    .DT                 --- set the kernel rtc from the DS3231  
     CR PRINT" Restoring System Running Parameters from DS3231 EEPROM "
-    GETRUNTIME                   --- get current runtime parameters from DS3231 eeprom 
+    GETRUNTIME          --- get current runtime parameters from DS3231 eeprom 
     10 ms
     CR PRINT" Starting System" CR
     CR PRINT" Circ Pump Started "
-    ON CIRCPUMP                  --- start the circulation pump
+    ON CIRCPUMP         --- start the circulation pump
     CR PRINT" Setting Day or Night " CR 
-    DAY? LIGHTS                         --- is it day?
+    DAY? LIGHTS         --- is it day?
     --- setdefaults     --- this sets defaults from program, debugging or no DS1302 setup
     FALSE edsflag !     --- ebb dwell status flag
     FALSE fdsflag !     --- flow dwell status flag
     FALSE fflag !       --- fault flag, stops system
     FALSE lightflag !   --- light flag to false fault light
-    *reset FLOAT     --- reset system pin to input
+    *reset FLOAT        --- reset system pin to input
     0 LSTF C!           --- clear last fault code
     0 PSIFLT !          --- reset fault code from DLVR-L30D.fth PSI Sensor Driver
     g==                 --- turn console logging on
-    OFF systestmode     --- start system in live mode 
     CR PRINT" Tank Level Sensor Starting Up, Standby " CR
 ;
 
@@ -568,41 +573,42 @@ pub sysinit  ( -- )   --- initialize the system
 { stop the sytem }
 pub stopit
     CR PRINT" ***** System is Stopped ***** " CR
-    ALLSTOP                    --- turn everything off
-    !POLLS               --- disable keypoll calling nstps
+    ALLSTOP                              --- turn everything off
+    !POLLS                               --- disable keypoll calling nstps
 ;
 
+{ writes 0 to lastkey and then backspace to KEY, clarify with peter }
 pri !CTL	0 lastkey C! 8 KEY! ;
 
-{ stepping routine with delay for keypoll 4K/sec calls
-  the state machine is called about ever 2 seconds
-  and the PSI sensor from DLVR-L30D.fth driver is called about 10 per second
-} 
+{ routine constantly call by keypoll to run system } 
 pub nstps
-    lastkey C@ ^Q = IF stopit !CTL EXIT THEN
-    lastkey C@ ^? = IF showit !CTL THEN
-    lastkey C@ ^R = IF setdefaults Reset !CTL THEN
-    statetmr TIMEOUT?                --- get the state machine counter
+    lastkey C@ ^Q = IF stopit !CTL EXIT THEN      --- stop the system
+    lastkey C@ ^? = IF showit !CTL THEN           --- show params
+    lastkey C@ ^R = IF Reset !CTL THEN            --- reset system start over from stored params in DS3232
+    lastkey C@ ^L = IF g==  !CTL THEN             --- turn logging on
+    lastkey C@ ^K = IF g-- !CTL THEN              --- turn logging off
+
+    statetmr TIMEOUT?                --- run state machine now ?
     IF
-        2000 statetmr TIMEOUT     --- reset counter 
-        doit                       --- run the state machine
+        2000 statetmr TIMEOUT        --- reset counter 
+        doit                         --- run the state machine
     THEN
 
-    dlvrtmr TIMEOUT?                --- get the read psi sensor counter
+    dlvrtmr TIMEOUT?                 --- read psi sensor now ?
     IF
-        10 dlvrtmr TIMEOUT  --- reset counter and read sensor
-        PSI.GET            --- run the PSI Sensor often from the DLVR-L30D.fth driver to read sensor
+        10 dlvrtmr TIMEOUT           --- reset timer and read sensor
+        PSI.GET                      --- run the PSI Sensor often from the DLVR-L30D.fth driver to read sensor
     THEN
 ;
 
     
 { Start the system }
 pub startit
-    !!SP                       --- Init data stack with $DEADBEEF  sanity check
-    sysinit                    --- initialize system 
-    #10_000 statetmr TIMEOUT     --- set state machine loop delay large to delay for GET.PSI readings   
-    0 dlvrtmr TIMEOUT                    --- set loop for GET.PSI polling
-    0 LSTF C!                  --- reset Last Fault code to zero
+    !!SP                            --- Init data stack with $DEADBEEF  sanity check
+    sysinit                         --- initialize system 
+    #10_000 statetmr TIMEOUT        --- set state machine loop delay large to delay for GET.PSI readings   
+    0 dlvrtmr TIMEOUT               --- set loop for GET.PSI polling
+    0 LSTF C!                       --- reset Last Fault code to zero
     ' nstps keypoll W!              --- set nstps to get called by keypoll
 ;
 
