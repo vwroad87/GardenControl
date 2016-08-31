@@ -1,0 +1,37 @@
+
+{ *************** current breadboard system pins ****************** }
+#P0                                     --- mSDA  secondary i2c for psi sensor
+#P1                                     --- mSCL  "
+#P2                                     --- RS485 direction TE /RE
+#P14  *reset                            --- reset pin input
+#P15  *alarm                            --- alarm pin
+#P16  *circ                             ——- SSR Ch1
+#P17  *ebbp                             ——- SSR Ch2
+#P18  *flowp                            ——- SSR Ch3
+#P19  *lights                           ——- SSR Ch4
+#P20				       --- RS485 RX/TX
+#P21  			   	       --- LED GREEN
+#P22 				       --- LED RED
+
+{  micro edge connector on rear of P8 Board  }
+GND
+#P3   
+#P4
+#P5
+#P6
+#P7
+GND
+GND
+VDD
+#P8
+#P9
+#P10
+#P11
+#P12
+#P13  
+
+( Programming Header )
+GND
+RES  RST
+<TX  #P31
+>RX  #P30
