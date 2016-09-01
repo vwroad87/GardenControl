@@ -15,6 +15,9 @@
 \                     This code needs clean up and proper annotation but seems really stable
 \                     Checkin at V1.0,  Thanks to all
 \   dp 160830         Cleanup of code comments,  removed some unused variables and routines, added ^L and ^K to for on/off logging
+\   dp 160831         Added basic SDCard Logging use 3 files RUNTIME0.LOG 1 and 2, rotate logs every 2 am
+\   dp 160901         Modified basic SDCard Logging with LOGF C@ 1+ 3 MOD LOGF C! with wrap around from 0 - 2,  hat tip Peter
+\    testing testing testing logging
 
 \                     
 TACHYON
@@ -26,7 +29,7 @@ IFNDEF DLVR-L30D.fth
 }
 
 FORGET GARDENCONTROL.fth
-pub  GARDENCONTROL.fth   PRINT" Garden Control PBJ-8 160830 1900 V1.1          " ;
+pub  GARDENCONTROL.fth   PRINT" Garden Control PBJ-8 160901 0845 V1.2          " ;
 
 
 \ : TP		PRINT" <TP @" DEPTH . PRINT" >" ;
@@ -54,6 +57,7 @@ pub .TIMERS
  	REPEAT
  	DROP
  	;
+
 pub .TASKS ( -- \ List tasks )
 	8 0 DO
 	  I TASK 2+ C@ DUP
@@ -80,7 +84,7 @@ pub .TASKS ( -- \ List tasks )
 #P14 == *reset		--- reset pin input
 
 { ************ constants ************ }
-#22 == ramlen        --- ram data length
+#23 == ramlen        --- ram data length
 { states }
 1 == ebbs            --- ebb state
 2 == flows           --- flow state
@@ -122,7 +126,7 @@ pub g--   ( -- )    --- turn data logging to the screen off
 
 
 { runtime structure stored in DS3232 SRAM }
-22 BYTES params     \ allocate memory for #22 bytes
+ramlen BYTES params     \ allocate memory for #22 bytes
 params ORG    
     1 DS HALT      --- halt byte TRUE do not run
     1 DS LSTS      --- Last state running
@@ -146,6 +150,7 @@ params ORG
     1 DS WLMX      --- high water level that trips fault code WLHF
     1 DS SENF      --- constat reading for water sensor no air fault
     1 DS SENC      --- water sensor calibration
+    1 DS LOGF      --- current logfile number 
 
 
 
@@ -174,7 +179,7 @@ pub GETRUNTIME     \ Read ram/eeprom of RTC and set runtime structure
 { show what is in runtime program memory currently }
 pub showit
     ramlen 0 DO
-        CR I 2* 2* " HALTLSTSLSTTEBHLEBLLEDWLFLHLFLLLFDWLEBTDEBTNFLTDFLTNHRSDMINDDURHDURMLSTFWLMNWLMXSENFSENC" + 4 CTYPE
+        CR I 2* 2* " HALTLSTSLSTTEBHLEBLLEDWLFLHLFLLLFDWLEBTDEBTNFLTDFLTNHRSDMINDDURHDURMLSTFWLMNWLMXSENFSENCLOGF" + 4 CTYPE
         PRINT" : " params I + C@ .
     LOOP
 ; 
@@ -203,12 +208,62 @@ pub setdefaults
     #90 WLMX  C!       --- high water level that trips fault code WLHF
     #85 SENF   C!      --- set this constat reading with water sensor no air
     0  SENC C!         --- set this water sensor calibration
+    0  LOGF C!         --- start with 0 logfile number  RUNTIME0.LOG
 ;
+
+{ ******************** SD Card Logging ************************** }
+
+{ this routine returns the current logfile name string in use }
+pub logfile@  ( -- CurrentLogFileNameString )
+   LOGF C@ 
+   SWITCH                                 --- select log file name
+     0 case  " RUNTIME0.TXT" BREAK
+     1 case  " RUNTIME1.TXT" BREAK
+     2 case  " RUNTIME2.TXT" BREAK
+; 
+
+
+{ this routine opens the current logfile so CONsole output can be vectored
+  make sure you call closelog after output }
+pub appendlog ( -- )
+   logfile@                    --- get the current logfile string 
+   FOPEN$                      --- open the file 
+   IF                          --- file was opened Okay
+     RW                        --- set it to R/W
+     0 APPEND                  --- find EOF null
+     IF                        --- file set to append Okay
+       >FILE                   --- revector emit to this FILE, leave file open
+     THEN                      --- make sure you call closelog
+   THEN
+;
+
+{ call this routine after a call to appendlog }
+pub closelog    ( -- ) 
+    CR FCLOSE CON              --- close the file and revector to the CONsole
+;
+
+{ this routine switches the logs files at 2 am, call this routine in the keypoll loop }
+pub ?switchlog
+   TIME@  #2.00.00 =                                               --- is it 2 am ? 
+   IF
+     LOGF C@ 1+ 3 MOD LOGF C!                                      --- wrap it around from 0 - 2,  hat tip Peter
+     SETRUNTIME	                                                   --- update this LOGF change to DS3232 SRAM
+     logfile@  -FERASE                                             --- erase the now current logfile
+     100 ms                                                        --- SDCard needs a rest
+     appendlog .DT ."  Log File Change " CR CR closelog            --- write entry in new log
+     1 second                                                      --- delay to make sure we only call this once   
+   THEN
+;
+
+{ ******************** SD Card Logging ************************** }
+
+
  
 { display whats in the runtime table }
 pub showram
-    params ramlen ADO   CR I C@ . LOOP
+    params ramlen ADO  CR I C@ . LOOP
 ;
+
 { word to clear runtime table }
 pub clearram
     params ramlen ADO  0   I  C!  LOOP
@@ -219,9 +274,14 @@ pub MINUTES@ ( -- minutes )    --- get time as minutes
     TIME@ #100 / #100 U/MOD #60 * +
 ;   
 
+pub .GTL ;  --- forward declare this empty routine   
+
 { check for each minute change }
 pub MINUTE? ( -- flg )   --- has a minute elapsed?            
     MINUTES@ now W@ OVER now W! <>
+    DUP IF                                 --- if we are on a minute change lets log it
+      appendlog  .DT ."  Minute log: " .GTL closelog
+    THEN 
 ;  
 
 { set daybegin and dayend to absolute minutes,  adjusts for crossing 2400 hrs boundary }
@@ -270,9 +330,6 @@ pub SetTankLevel ( level -- )                 --- set the global tank level for 
 ;
 ALIAS SetTankLevel  stl!                      --- store the tank level to global tanklevel var for debug  
 
-
-
-
 { helper word to print status of ON or OFF }
 pub .ON/OFF ( on/off -- on/off )
 	IF PRINT" ON " ELSE PRINT" OFF " THEN CR
@@ -282,7 +339,6 @@ pub .ON/OFF ( on/off -- on/off )
 pub .GTL ( -- print tank level ) 
 	PRINT" Tank Level  " gtl@ . CR
 ;
-
 
 { helper word to print time left in this state of tank } 
 pub .TLS ( -- print time left in this state  ) 
@@ -295,7 +351,6 @@ pub FLOWPUMP  ( ON / OFF -- message to terminal )
     LOG? IF CR .TIME PRINT"  FLOW PUMP  " DUP .ON/OFF .GTL THEN
     DROP    --- if logging is off we need to drop 
 ;
-
 
 { return terminal message of flow pump status }
 pub .FLOWPUMP  ( -- terminal message on or off )
@@ -505,7 +560,7 @@ pub showfault ( faultcode -- )                  --- display fault
 { reset the system from DS3232 SRAM saved parameters }
 pub ?Reset
 	*reset LOW? 0EXIT      --- button is active low
-pub Reset
+pub SysReset
 	0 LSTF C!              --- reset Last Fault code to zero
         FALSE fflag !          --- reset fault flag
         FALSE lightflag !      --- reset the fault light flag
@@ -518,6 +573,7 @@ pub Reset
           CR PRINT"  Restoring Running Parameters from Clock Memory " CR
           .GTL CR              --- print tank level
         THEN
+        appendlog .DT ."  System Reset" CR .GTL CR closelog            --- log the system init
 ;    
 
 { this controls error checking, system recovery from system pin depress
@@ -567,36 +623,43 @@ pub sysinit  ( -- )
     0 PSIFLT !          --- reset fault code from DLVR-L30D.fth PSI Sensor Driver
     g==                 --- turn console logging on
     CR PRINT" Tank Level Sensor Starting Up, Standby " CR
+    CR PRINT" Mounting SD Card " CR 
+    mount
+    1 second 
+    appendlog .DT ."  System Init" CR  closelog            --- log the system init
 ;
 
 
 { stop the sytem }
 pub stopit
     CR PRINT" ***** System is Stopped ***** " CR
-    ALLSTOP                              --- turn everything off
-    !POLLS                               --- disable keypoll calling nstps
+    ALLSTOP                                       --- turn everything off
+    !POLLS                                        --- disable keypoll calling nstps
+    appendlog .DT ."  System Stop" CR  closelog   --- log this
 ;
 
-{ writes 0 to lastkey and then backspace to KEY, clarify with peter }
+{ writes 0 to lastkey and then write backspace to KEY to erase input from terminal }
 pri !CTL	0 lastkey C! 8 KEY! ;
 
 { routine constantly call by keypoll to run system } 
 pub nstps
     lastkey C@ ^Q = IF stopit !CTL EXIT THEN      --- stop the system
-    lastkey C@ ^? = IF showit !CTL THEN           --- show params
-    lastkey C@ ^R = IF Reset !CTL THEN            --- reset system start over from stored params in DS3232
+    lastkey C@ ^S = IF showit CR !CTL THEN        --- show params
+    lastkey C@ ^R = IF SysReset !CTL THEN         --- reset system start over from stored params in DS3232
     lastkey C@ ^L = IF g==  !CTL THEN             --- turn logging on
     lastkey C@ ^K = IF g-- !CTL THEN              --- turn logging off
 
+    ?switchlog                       --- check to see if we need to rotate system logs every 2 am
+
     statetmr TIMEOUT?                --- run state machine now ?
     IF
-        2000 statetmr TIMEOUT        --- reset counter 
+        2000 statetmr TIMEOUT        --- reset time and run every 2 seconds 
         doit                         --- run the state machine
     THEN
 
     dlvrtmr TIMEOUT?                 --- read psi sensor now ?
     IF
-        10 dlvrtmr TIMEOUT           --- reset timer and read sensor
+        10 dlvrtmr TIMEOUT           --- reset timer and read sensor, every 10 ms
         PSI.GET                      --- run the PSI Sensor often from the DLVR-L30D.fth driver to read sensor
     THEN
 ;
