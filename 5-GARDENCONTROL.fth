@@ -17,7 +17,8 @@
 \   dp 160830         Cleanup of code comments,  removed some unused variables and routines, added ^L and ^K to for on/off logging
 \   dp 160831         Added basic SDCard Logging use 3 files RUNTIME0.LOG 1 and 2, rotate logs every 2 am
 \   dp 160901         Modified basic SDCard Logging with LOGF C@ 1+ 3 MOD LOGF C! with wrap around from 0 - 2,  hat tip Peter
-\    testing testing testing logging
+\   dp 160901         Added LED output for system status
+\    testing testing testing logging  CHANGE THOSE PIN ASSIGNMENTS
 
 \                     
 TACHYON
@@ -29,7 +30,7 @@ IFNDEF DLVR-L30D.fth
 }
 
 FORGET GARDENCONTROL.fth
-pub  GARDENCONTROL.fth   PRINT" Garden Control PBJ-8 160901 0845 V1.2          " ;
+pub  GARDENCONTROL.fth   PRINT" Garden Control PBJ-8 160901 1900 V1.3          " ;
 
 
 \ : TP		PRINT" <TP @" DEPTH . PRINT" >" ;
@@ -76,12 +77,15 @@ pub .TASKS ( -- \ List tasks )
 
 { ***** equipment I/O assignments ********* }
 --- pins named with * prefix to indicate PIN CONSTANT plus avoid conflicts with upper/lower cases
-#P18 == *flow		--- flow pump
-#P17 == *ebb		--- ebb pump
-#P19 == *lights		--- uh guess what?
+#P18 == *flow		--- flow pump     MOVE TO 14 
+#P17 == *ebb		--- ebb pump    
+#P19 == *lights		--- uh guess what? MOVE TO 15
 #P16 == *circ		--- circulation pump
-#P15 == *alarm		--- alarm pin for FAULTLIGHT  
-#P14 == *reset		--- reset pin input
+#P15 == *alarm		--- alarm pin for FAULTLIGHT  MOVE TO 19 
+#P14 == *reset		--- reset pin input  MOVE TO 18 
+#P22 == *rled           --- red led pin
+#P21 == *gled           --- grn led pin
+
 
 { ************ constants ************ }
 #23 == ramlen        --- ram data length
@@ -109,6 +113,24 @@ TIMER dlvrtmr        --- timer for pacing of calls to PSI.GET from DLVR-L30D.fth
 TIMER  ebbdwell      --- timer to rest at ebb dwell until filling tank to ebb max level
 TIMER  flowdwell     --- timer to rest at flow dwell until emptying tank to flow min level  
 
+{ helpers for led/s colors }
+pub GLED ( on/off -- )
+ *gled PIN!
+;  
+
+pub RLED ( on/off -- )
+ *rled  PIN!
+;  
+
+pub YLED ( on/off -- )
+ DUP  *rled  PIN!
+      *gled  PIN!
+;
+
+{ toggle led }
+pub TLED ( ledpin -- )
+ DUP HIGH? IF 0 ELSE 1 THEN SWAP PIN! 
+;
 
 pub LOG? ( -- flag ) --- return logging flag on or off
   _log @
@@ -530,19 +552,22 @@ pub LSTF?  ( -- true/false )
 
 { turns off all equipment }
 pub ALLSTOP 
-    MUTE            --- turn off alarm
+    A MUTE B MUTE            --- turn off alarms both cog counters
     OFF FLOWPUMP
     OFF EBBPUMP
     OFF LIGHTS
     OFF CIRCPUMP
+    ON GLED                  --- turn grn led on steady
 ;
 
 { flashes the fault light or buzzer with a timer }
 pub FAULTLIGHT
     lightflag @ FALSE =       --- fault light already on? 
     IF
-        *alarm  APIN          --- BUZZER
-        8 HZ
+        A DUTY *alarm APIN    --- beeper at 5HZ
+        5 HZ  
+        B DUTY *rled APIN     --- led at 7HZ
+        7 HZ  
         TRUE lightflag !
     THEN
 ;
@@ -565,7 +590,7 @@ pub SysReset
         FALSE fflag !          --- reset fault flag
         FALSE lightflag !      --- reset the fault light flag
         0 PSIFLT !             --- reset fault code from DLVR-L30D.fth PSI Sensor Driver
-        MUTE                   --- turn off light
+        A MUTE B MUTE          --- turn alarms 
         ON CIRCPUMP            --- start the circulation pump
         DAY? LIGHTS            --- is it day?
         LOG? IF 
@@ -622,6 +647,7 @@ pub sysinit  ( -- )
     0 LSTF C!           --- clear last fault code
     0 PSIFLT !          --- reset fault code from DLVR-L30D.fth PSI Sensor Driver
     g==                 --- turn console logging on
+    ON GLED             --- turn on solid grn led
     CR PRINT" Tank Level Sensor Starting Up, Standby " CR
     CR PRINT" Mounting SD Card " CR 
     mount
@@ -653,6 +679,8 @@ pub nstps
 
     statetmr TIMEOUT?                --- run state machine now ?
     IF
+        
+        lightflag @ NOT IF *gled TLED THEN    --- Only toggle the green led every 2 seconds if not in Fault
         2000 statetmr TIMEOUT        --- reset time and run every 2 seconds 
         doit                         --- run the state machine
     THEN
@@ -674,11 +702,6 @@ pub startit
     0 LSTF C!                       --- reset Last Fault code to zero
     ' nstps keypoll W!              --- set nstps to get called by keypoll
 ;
-
-
-
-
-
 
 
 
