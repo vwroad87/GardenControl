@@ -3,8 +3,8 @@
 #P0                                     --- mSDA  secondary i2c for psi sensor
 #P1                                     --- mSCL  "
 #P2                                     --- RS485 direction TE /RE
-#P14  *reset                            --- reset pin input
-#P15  *alarm                            --- alarm pin
+#P14  *reset                            --- reset pin input  production either 18 or 19 
+#P15  *alarm                            --- alarm pin production either 18 or 19
 #P16  *circ                             ——- SSR Ch1
 #P17  *ebbp                             ——- SSR Ch2
 #P18  *flowp                            ——- SSR Ch3
@@ -35,3 +35,14 @@ GND
 RES  RST
 <TX  #P31
 >RX  #P30
+
+
+
+( fancy patching stuff )
+Got sneaky with patching PSI@
+: -PSI@   	 0 0 0 ; --- dummy PSI@
+: -PSI@-    -PSI@ ; ( the dummy for the dummy just to use its call code )
+: GO   	 ' -PSI@- ' PSI@ 4 CMOVE startit #10_000 statetmr TIMEOUT 0 HALT C! g== ;
+
+
+
