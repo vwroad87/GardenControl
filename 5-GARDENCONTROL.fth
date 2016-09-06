@@ -18,6 +18,7 @@
 \   dp 160831         Added basic SDCard Logging use 3 files RUNTIME0.LOG 1 and 2, rotate logs every 2 am
 \   dp 160901         Modified basic SDCard Logging with LOGF C@ 1+ 3 MOD LOGF C! with wrap around from 0 - 2,  hat tip Peter
 \   dp 160901         Added LED output for system status
+\   dp 160906         Fixed Stack Bug in ?switchlog   -FERASE needs file handle not string name 1.4
 \    testing testing testing logging  CHANGE THOSE PIN ASSIGNMENTS
 
 \                     
@@ -30,7 +31,7 @@ IFNDEF DLVR-L30D.fth
 }
 
 FORGET GARDENCONTROL.fth
-pub  GARDENCONTROL.fth   PRINT" Garden Control PBJ-8 160901 1900 V1.3          " ;
+pub  GARDENCONTROL.fth   PRINT" Garden Control PBJ-8 160906 1200 V1.4          " ;
 
 
 \ : TP		PRINT" <TP @" DEPTH . PRINT" >" ;
@@ -269,12 +270,20 @@ pub ?switchlog
    TIME@  #2.00.00 =                                               --- is it 2 am ? 
    IF
      LOGF C@ 1+ 3 MOD LOGF C!                                      --- wrap it around from 0 - 2,  hat tip Peter
-     SETRUNTIME	                                                   --- update this LOGF change to DS3232 SRAM
-     logfile@  -FERASE                                             --- erase the now current logfile
+     SETRUNTIME	                                                   --- update this LOGF change to DS3232 SRAM  
+     10 ms
+     GETRUNTIME	                                                   --- get new runtime params from DS3232 SRAM
+     logfile@                                                      --- get the logfile name
+     FOPEN$                                                        --- open the file 
+     IF                                                            --- file was opened Okay
+       RW                                                          --- set it to R/W
+       -FERASE                                                     --- erase and flush the file
+       FCLOSE                                                      --- close the file
+     THEN
      100 ms                                                        --- SDCard needs a rest
      appendlog .DT ."  Log File Change " CR CR closelog            --- write entry in new log
      1 second                                                      --- delay to make sure we only call this once   
-   THEN
+ THEN
 ;
 
 { ******************** SD Card Logging ************************** }
