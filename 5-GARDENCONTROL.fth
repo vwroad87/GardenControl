@@ -265,26 +265,7 @@ pub closelog    ( -- )
     CR FCLOSE CON              --- close the file and revector to the CONsole
 ;
 
-{ this routine switches the logs files at 2 am, call this routine in the keypoll loop }
-pub ?switchlog
-   TIME@  #2.00.00 =                                               --- is it 2 am ? 
-   IF
-     LOGF C@ 1+ 3 MOD LOGF C!                                      --- wrap it around from 0 - 2,  hat tip Peter
-     SETRUNTIME	                                                   --- update this LOGF change to DS3232 SRAM  
-     10 ms
-     GETRUNTIME	                                                   --- get new runtime params from DS3232 SRAM
-     logfile@                                                      --- get the logfile name
-     FOPEN$                                                        --- open the file 
-     IF                                                            --- file was opened Okay
-       RW                                                          --- set it to R/W
-       -FERASE                                                     --- erase and flush the file
-       FCLOSE                                                      --- close the file
-     THEN
-     100 ms                                                        --- SDCard needs a rest
-     appendlog .DT ."  Log File Change " CR CR closelog            --- write entry in new log
-     1 second                                                      --- delay to make sure we only call this once   
- THEN
-;
+
 
 { ******************** SD Card Logging ************************** }
 
@@ -422,6 +403,34 @@ pub ebb/flow		ebb? IF flows ELSE ebbs THEN LSTS C! ;
 
 { display ebb or flow to terminal }
 pub .ebb/flow		IF PRINT" ebb " ELSE PRINT" flow " THEN ;
+
+
+
+
+{ this routine switches the logs files at 2 am, call this routine in the keypoll loop }
+pub ?switchlog
+   TIME@  #2.00.00 =                                               --- is it 2 am ? 
+   IF
+    OFF EBBPUMP
+	OFF FLOWPUMP
+     --- need to turn EBB and FLOW pumps off, erase takes 15 seconds
+     LOGF C@ 1+ 3 MOD LOGF C!                                      --- wrap it around from 0 - 2,  hat tip Peter
+     SETRUNTIME	                                                   --- update this LOGF change to DS3232 SRAM  
+     10 ms
+     GETRUNTIME	                                                   --- get new runtime params from DS3232 SRAM
+     logfile@                                                      --- get the logfile name
+     FOPEN$                                                        --- open the file 
+     IF                                                            --- file was opened Okay
+       RW                                                          --- set it to R/W
+       -FERASE                                                     --- erase and flush the file
+       FCLOSE                                                      --- close the file
+     THEN
+     100 ms                                                        --- SDCard needs a rest
+     appendlog .DT ."  Log File Change " CR CR closelog            --- write entry in new log
+     1 second                                                      --- delay to make sure we only call this once   
+ THEN
+;
+
 
 { change to next state and set time in this state }
 pub NEXTSTATE   ( -- )    				 
