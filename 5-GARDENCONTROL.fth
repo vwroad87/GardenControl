@@ -19,6 +19,7 @@
 \   dp 160901         Modified basic SDCard Logging with LOGF C@ 1+ 3 MOD LOGF C! with wrap around from 0 - 2,  hat tip Peter
 \   dp 160901         Added LED output for system status
 \   dp 160906         Fixed Stack Bug in ?switchlog   -FERASE needs file handle not string name 1.4
+\   dp 160908         Moved ?switchlog and shut off ebb and flow pumps during log change,  15 seconds 1.5
 \    testing testing testing logging  CHANGE THOSE PIN ASSIGNMENTS
 
 \                     
@@ -31,7 +32,7 @@ IFNDEF DLVR-L30D.fth
 }
 
 FORGET GARDENCONTROL.fth
-pub  GARDENCONTROL.fth   PRINT" Garden Control PBJ-8 160906 1200 V1.4          " ;
+pub  GARDENCONTROL.fth   PRINT" Garden Control PBJ-8 160908 1100 V1.5          " ;
 
 
 \ : TP		PRINT" <TP @" DEPTH . PRINT" >" ;
