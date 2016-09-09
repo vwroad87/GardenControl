@@ -9,10 +9,11 @@ TACHYON
 \  dp  20160907-1300 v0.5  debugging routines, work in progress
 \  dp  20160907-2030 v0.6  small module to integrate with gardencontrol
 \  dp  20160909-0930 v0.7  added start stop routines:  gofona stopfona to control the RX task FONA.TASK
+\  dp  20160909-0930 v0.8  minor bug fix
 
 FORGET FONA.fth
 
-pub FONA.fth   PRINT" FONA Test V0.7 dp  20160907-2130 " ;
+pub FONA.fth   PRINT" FONA Test V0.8 dp  20160909-1000 " ;
 
 --- setup
 #9600 SERBAUD                           --- nice and slow 
@@ -40,8 +41,6 @@ pub FONA.TASK
        rxsize 1- AND buf232 + C!        \ compute buf232 addr and write data to buffer
        rxwr W++                         \ increment buffer pointer
     ?fona @ UNTIL 
-STOP
-EXIT
 ;
 
 \ You can read the buffered data with this
@@ -173,7 +172,7 @@ pub cmsg ( " message" " number" -- )   --- send sms message
 pub gofona
   OFF ?fona !    --- set task flag to run
   ." Starting FONA module " CR
-  ' RS232.TASK  7 RUN   --- start the rs232 task
+  ' FONA.TASK  7 RUN   --- start the rs232 task
   #500 ms
   ' rfona keypoll W!   
   CR ." Reset FONA: " crst       --- reset fona
