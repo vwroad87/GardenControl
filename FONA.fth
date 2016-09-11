@@ -21,7 +21,7 @@ TACHYON
 \  dp  20160907-2030 v0.6  small module to integrate with gardencontrol
 \  dp  20160909-0930 v0.7  added start stop routines:  gofona stopfona to control the RX task FONA.TASK
 \  dp  20160909-0930 v0.8  minor bug fix
-\  dp  20160910-1530 v1.0  rewrote controlling words in object syntax and documented usage
+\  dp  20160910-2330 v1.0  rewrote controlling words in object syntax and documented usage, fixed FONA.READ dropped nulls
 
 
 FORGET FONA.fth
@@ -84,9 +84,9 @@ pub cmrdchr  ( char -- )   --- read sms message by index char
 
 
 \ Read Fona TX to the console
-pub FONA.READ ( -- )                --- read the fona and output
-    GET232                          --- display
-    EMIT
+pub FONA.READ ( -- )                         --- read the fona and output
+    GET232                                   --- display
+    DUP 0= IF DROP  ELSE EMIT THEN           --- don't tie up console with nulls
 ;
 
 pub CRST
