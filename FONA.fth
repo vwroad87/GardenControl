@@ -8,7 +8,7 @@ TACHYON
 \   USAGE
 \     FONA.GO    --- use this to init the module, start the RX form FONA module Task, hardcoded COG 7
 \     FONA.STOP  --- stop the task with this
-\     FONA.READ  --- use this to read the FONA module return buffer
+\     FONA.READ  --- use this to read the FONA module return buffer to console, call by main module keypoll... 
 \     FONA.SEND ( " text message to send" " 1234561111" -- ) send SMS message, results can be read with FONA.READ 
 \                                                            to the console or revectored 
 \ --------------------------------------------------------------------------------------------------------------------------
