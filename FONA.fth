@@ -1,32 +1,43 @@
 TACHYON
 [~
 \
-\  FONA Celullar Test Routines
+\  FONA Celullar Routines
+\  A small module that sends SMS texts messages on AdaFruit's FONA GMS Module using a TING Account Card 
+
+\ --------------------------------------------------------------------------------------------------------------------------
+\   USAGE
+\     FONA.GO    --- use this to init the module, start the RX form FONA module Task, hardcoded COG 7
+\     FONA.STOP  --- stop the task with this
+\     FONA.READ  --- use this to read the FONA module return buffer
+\     FONA.SEND ( " text message to send" " 1234561111" -- ) send SMS message, results can be read with FONA.READ 
+\                                                            to the console or revectored 
+\ --------------------------------------------------------------------------------------------------------------------------
+
 \  dp  20151227-1900 V0.1
 \  dp  20151228-1200 V0.2  got sms sending and reading
-\  dp  20151229-2200 V0.3  rewrote commands using strings, paramaterized cmsg 
+\  dp  20151229-2200 V0.3  rewrote commands using strings, paramaterized SEND 
 \  dp  20160906-1700 v0.4  added commands, tried to compile and run with Juno but no joy,  stable on 2.4 hum?  
 \  dp  20160907-1300 v0.5  debugging routines, work in progress
 \  dp  20160907-2030 v0.6  small module to integrate with gardencontrol
 \  dp  20160909-0930 v0.7  added start stop routines:  gofona stopfona to control the RX task FONA.TASK
 \  dp  20160909-0930 v0.8  minor bug fix
+\  dp  20160910-1530 v1.0  rewrote controlling words in object syntax and documented usage
+
 
 FORGET FONA.fth
 
-pub FONA.fth   PRINT" FONA Test V0.8 dp  20160909-1000 " ;
+pub FONA.fth   PRINT" FONA Test V1.0 dp  20160910-1530 " ;
 
---- setup
+--- setup, pins
 #9600 SERBAUD                           --- nice and slow 
 #P2 == TX                               --- my pin, device RX
 #P20 == RX                              --- my pin, device TX
-
---- timers
-TIMER fonatmr       --- timer for pacing of reading FONA TX pin
-LONG ?fona          --- flag for task 
+--- vars
+LONG ?fona                              --- task flag
 
 --- serial task rx stuff 
 WORD rxrd,rxwr                          --- create receive buffer, indexes
-#128 == rxsize
+#64 == rxsize
 rxsize BYTES buf232                     
 10 LONGS stack232 
 
@@ -59,12 +70,12 @@ pub celpout  ( char -- )
 ;
 
 --- redirect output to fona
-pub celp ' celpout uemit W! 
+pub CELP ' celpout uemit W! 
 ;  
 
 pub cmrdchr  ( char -- )   --- read sms message by index char
 --- AT+CMGR
-  celp
+  CELP
   --- send msg cmd
   " AT+CMGR=" PRINT$ 
   EMIT CR
@@ -73,119 +84,96 @@ pub cmrdchr  ( char -- )   --- read sms message by index char
 
 
 \ Read Fona TX to the console
-pub rfona ( - )                  --- read the fona and output
-  fonatmr TIMEOUT?               --- run state machine now ?
-    IF
-      10 fonatmr TIMEOUT        --- reset time and run every 10 seconds 
-      GET232                     --- display
-      EMIT
-  THEN
+pub FONA.READ ( -- )                --- read the fona and output
+    GET232                          --- display
+    EMIT
 ;
 
-pub crst   --- reset device
-  celp
+pub CRST
+  CELP
   " ATZ" PRINT$ CR
   CON
 ;
 
---- 0 Received unread messages
---- 1 Received read messages
---- 2 Stored unsent messages
---- 3 Stored sent messages
---- 4 All messages 
-pub clst ( cmd -- )  --- list messages
-  celp               --- revector to FONA RX, our TX pin
-  " AT+CMGL=" PRINT$ 
-  .                  --- output cmd
-  CR
-  CON                --- back to the console
-;
-
-pub cbat   --- show battery status
-  celp
+pub CBAT ( -- bat_status)          --- show battery status  1|0 charging , % bat, millivolts  0, 67, 3890
+  CELP
   " AT+CBC"  PRINT$ CR
   CON
 ;
 
-pub cech ( ON|OFF -- ) --- set echo
-  celp
+pub CECH ( ON|OFF -- ) --- set echo
+  CELP
   IF "1" ELSE  "0" THEN
   " ATE" PRINT$ EMIT CR
   CON
 ;
 
-pub cnum   ( -- )   --- request device number
-   celp
+pub CNUM   ( -- )   --- request device number
+   CELP
   " AT+CNUM" PRINT$ CR
   CON
 ;
 
-pub cpwr   ( -- )   --- request device number
-  celp
+pub CPWR   ( -- )   --- request device number
+  CELP
   " AT+CPOWD=1"  PRINT$ CR
   CON
 ;
 
-pub ctxt (  -- )   --- set sms command mode to text 
-  celp
+pub CTXT (  -- )   --- set sms command mode to text 
+  CELP
   --- set text mode 
   " AT+CMGF=1" PRINT$  CR
   100 ms
   CON
 ;
 
-pub cpdu (  -- )   --- set sms command mode to pdu
-  celp
+pub CPDU (  -- )   --- set sms command mode to pdu
+  CELP
   --- set pdu mode 
   " AT+CMGF=0" PRINT$  CR
   100 ms
   CON
 ;
 
-pub cdela ( -- ) --- delete all messages
- cpdu --- set into pdu mode
- celp 
+pub CDELA ( -- ) --- delete all messages
+ CPDU --- set into pdu mode
+ CELP 
  " AT+CMGDA=6"  PRINT$ CR
  CON
 ;
 
-pub cmsg ( " message" " number" -- )   --- send sms message
-  ctxt   --- set into text mode
+pub FONA.SEND ( " message" " number" -- )   --- send sms message
+  CTXT   --- set into text mode
   --- Write Command 1) If text mode (+CMGF=1): +CMGS=<da>[, <toda>] <CR>text is entered <ctrl-Z/ESC> 
-  celp
-  --- send msg cmd
-  " AT+CMGS=" PRINT$
-  --- da destination address
-  34 EMIT   --- send a: "
-  PRINT$   --- send the destination address  
-  34 EMIT   --- send a: "
+  CELP                                          --- revector TX pin
+  " AT+CMGS=" PRINT$                            --- send msg cmd
+  34 EMIT PRINT$  34 EMIT                       --- send the destination address  
   CR
-  #500 ms    --- wait for reply
-  --- message body
-  PRINT$   --- send the message
-  --- end message
-  ^Z EMIT   CR
-  CON
+  #500 ms                                       --- wait for reply
+  PRINT$                                        --- send the message
+  ^Z EMIT   CR                                  --- end message
+  CON                                           --- back to CONsole
 ;
 
-\   This routine starts the system
-pub gofona
-  OFF ?fona !    --- set task flag to run
-  ." Starting FONA module " CR
-  ' FONA.TASK  7 RUN   --- start the rs232 task
-  #500 ms
-  ' rfona keypoll W!   
-  CR ." Reset FONA: " crst       --- reset fona
-  #500 ms    --- delay
-  CR ." Echo Off: " OFF cech   --- command echo off fona
-  10 ms
-  CR ." Text Mode: " ctxt       --- set into text mode
+---   This routine starts the system
+pub FONA.GO
+   OFF ?fona !                               --- set task flag to run
+  ." Starting FONA Module " CR
+  ' FONA.TASK  7 RUN                         --- start the rs232 task
+   #500 ms
+   CR ." Reset FONA: " 
+   CRST
+   #500 ms                                   --- delay
+   CR ." Echo Off: " 
+   OFF CECH                                  --- command echo off fona
+   10 ms
+   CR ." Text Mode: " CTXT                   --- set into text mode
 ;
 
-pub stopfona
-  ." Stopping FONA module " CR
+pub FONA.STOP 
+  ." Stopping FONA Module" CR
   ON ?fona !   --- set task flag to stop
-  0 keypoll W!
 ;
 
 ]~
