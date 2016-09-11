@@ -26,7 +26,7 @@ TACHYON
 
 FORGET FONA.fth
 
-pub FONA.fth   PRINT" FONA Test V1.0 dp  20160910-1530 " ;
+pub FONA.fth   PRINT" FONA Test V1.0 dp  20160910-2330 " ;
 
 --- setup, pins
 #9600 SERBAUD                           --- nice and slow 
