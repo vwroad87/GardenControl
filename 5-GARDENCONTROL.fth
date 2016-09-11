@@ -31,6 +31,11 @@ IFNDEF DLVR-L30D.fth
 !!!
 }
 
+--- dp IFNDEF FONA.fth
+--- dp      CR PRINT" !!!  This module requires a FONA.fth  !!!          "
+--- dp !!!
+--- dp }
+
 FORGET GARDENCONTROL.fth
 pub  GARDENCONTROL.fth   PRINT" Garden Control PBJ-8 160908 1100 V1.5          " ;
 
@@ -98,6 +103,13 @@ pub .TASKS ( -- \ List tasks )
 1 == WLSF            --- water level sensor fault, lets shutdown if the water level sensor fails
 2 == WLHF            --- water level high fault,  are we over flowing the tank
 4 == WLLF            ---  water level low fault,   did it all leak out
+
+{ --- static fault reporting strings for FONA module --- }
+" 3605454869" $20 STRING DSTN                       ---  primary fault telco
+" 3603595754" $20 STRING DSTN2                      ---  secondary
+" water low fault" $20 STRING WLLFT                 ---  water low level fault text
+" water high fault" $20 STRING WLHFT                ---  water high level fault text
+" sensor fault" $20 STRING WLSFT                    ---  water level sensor fault text
 
 { *********** some variables *************** }
 WORD now             --- minutes of day now
@@ -558,7 +570,7 @@ pub HALT? ( -- 0 / non zero )
 
 { determine if we have a fault }
 pub LSTF?  ( -- true/false )
-    PSI@ #85 =  IF SENF LSTF C! THEN 2DROP
+    PSI@ #85 =  IF SENF LSTF C! THEN 2DROP          --- FROM DLVR modules
 
     WLMX C@                             --- waterlevel max ?
     gtl@ < IF WLHF LSTF C! THEN         ---  water level high fault
@@ -594,6 +606,7 @@ pub FAULTLIGHT
 { show which fault we have to the terminal }
 pub showfault ( faultcode -- )                  --- display fault
    SWITCH                                       --- what fault ?
+     --- dp WLSFT DSTN2  FONA.SEND                    --- Send this sms via FONA.fth, water level sensor fault text
      WLLF case  PRINT" Water too low " BREAK
      WLHF case  PRINT" Water too high " BREAK
      WLSF case  PRINT" Water sensor zero value " BREAK
@@ -633,12 +646,15 @@ pub doit
         HALT? LSTF?  OR   
         IF                                            --- check for halt or fault code
             ALLSTOP                                   --- stop everything
-            TRUE fflag !                              --- turn on fault lights
+            TRUE fflag !                              --- turn on fault lights, trips the IF next time around
             LOG? IF 
 	      CR .TIME PRINT"  System Halted"	      --- system halted
               CR PRINT" Last Fault "
+              CR PRINT" Sending SMS "
             THEN
             LOG? IF LSTF C@  showfault THEN           --- call the word to show fault text       
+               
+             
         ELSE
             STATE                                     --- run the state machine
         THEN
@@ -671,6 +687,7 @@ pub sysinit  ( -- )
     CR PRINT" Mounting SD Card " CR 
     mount
     1 second 
+   --- dp FONA.GO             --- start the FONA RX task and init FONA
     appendlog .DT ."  System Init" CR  closelog            --- log the system init
 ;
 
@@ -681,6 +698,7 @@ pub stopit
     ALLSTOP                                       --- turn everything off
     !POLLS                                        --- disable keypoll calling nstps
     appendlog .DT ."  System Stop" CR  closelog   --- log this
+   --- dp FONA.STOP                                     --- stop FONA from FONA.fth
 ;
 
 { writes 0 to lastkey and then write backspace to KEY to erase input from terminal }
@@ -708,6 +726,10 @@ pub nstps
     IF
         10 dlvrtmr TIMEOUT           --- reset timer and read sensor, every 10 ms
         PSI.GET                      --- run the PSI Sensor often from the DLVR-L30D.fth driver to read sensor
+    THEN
+ 
+    LOG?  IF
+      --- dp FONA.READ                      --- read FONA output to the console from FONA.fthA
     THEN
 ;
 
