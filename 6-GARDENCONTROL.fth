@@ -20,6 +20,8 @@
 \   dp 160901         Added LED output for system status
 \   dp 160906         Fixed Stack Bug in ?switchlog   -FERASE needs file handle not string name 1.4
 \   dp 160908         Moved ?switchlog and shut off ebb and flow pumps during log change,  15 seconds 1.5
+\   dp 161005         Integrated FONA mondule,  added ?? for display help, Changed to DSTN, Keith's cell number
+
 \    testing testing testing logging  CHANGE THOSE PIN ASSIGNMENTS
 
 \                     
@@ -31,10 +33,10 @@ IFNDEF DLVR-L30D.fth
 !!!
 }
 
---- dp IFNDEF FONA.fth
---- dp      CR PRINT" !!!  This module requires a FONA.fth  !!!          "
---- dp !!!
---- dp }
+IFNDEF FONA.fth
+    CR PRINT" !!!  This module requires a FONA.fth  !!!          "
+!!!
+}
 
 FORGET GARDENCONTROL.fth
 pub  GARDENCONTROL.fth   PRINT" Garden Control PBJ-8 160908 1100 V1.5          " ;
@@ -304,9 +306,6 @@ pub .GTL ;  --- forward declare this empty routine
 { check for each minute change }
 pub MINUTE? ( -- flg )   --- has a minute elapsed?            
     MINUTES@ now W@ OVER now W! <>
-    DUP IF                                 --- if we are on a minute change lets log it
-      appendlog  .DT ."  Minute log: " .GTL closelog
-    THEN 
 ;  
 
 { set daybegin and dayend to absolute minutes,  adjusts for crossing 2400 hrs boundary }
@@ -469,10 +468,11 @@ pub EBBFULL
 
 { at the ebb low level, set the dwell time if not set }
 pub EBBLOW
-	ebbdwell TIMEOUT?                      --- has the dwell timer elapsed?
+	ebbdwell TIMEOUT?                                                  --- has the dwell timer elapsed?
 	IF
-          ON EBBPUMP                           --- ebb pump back on
-          FALSE edsflag !                      --- reset ebb dwell timer flag
+          ON EBBPUMP                                                       --- ebb pump back on
+          FALSE edsflag !                                                  --- reset ebb dwell timer flag
+          appendlog  .DT ."  Ebb Pump On, Tank Level: " .GTL closelog      --- log pump on
 	  LOG? IF CR .TIME PRINT"  EBB Water Low, filling "  CR .GTL THEN
 	ELSE
             LOG? IF CR .TIME PRINT"  EBB Water Low, Dwell TIme Left  " ebbdwell @ 1000 U/ . CR .GTL THEN
@@ -508,10 +508,11 @@ pub FLOWLOW
 
 { at the flow full level, set the dwell time if not set }
 pub FLOWFULL
-	flowdwell TIMEOUT?                       --- has dwell timer elasped?
+	flowdwell TIMEOUT?                                                   --- has dwell timer elasped?
 	IF
-          ON FLOWPUMP                            --- flow pump back on
-          FALSE fdsflag !                        --- reset flow dwell timer flag  
+          ON FLOWPUMP                                                        --- flow pump back on
+          FALSE fdsflag !                                                    --- reset flow dwell timer flag  
+          appendlog  .DT ."  Flow Pump On, Tank Level: " .GTL closelog       --- log pump on
           LOG? IF CR .TIME PRINT"  Flow Water High, Empyting " CR .GTL THEN
 	ELSE
 	  LOG? IF CR .TIME PRINT"  FLOW Water High, Dwell TIme Left " flowdwell @ 1000 U/ . CR .GTL THEN
@@ -591,27 +592,37 @@ pub ALLSTOP
     ON GLED                  --- turn grn led on steady
 ;
 
-{ flashes the fault light or buzzer with a timer }
-pub FAULTLIGHT
-    lightflag @ FALSE =       --- fault light already on? 
-    IF
-        A DUTY *alarm APIN    --- beeper at 5HZ
-        5 HZ  
-        B DUTY *rled APIN     --- led at 7HZ
-        7 HZ  
-        TRUE lightflag !
-    THEN
-;
-
 { show which fault we have to the terminal }
 pub showfault ( faultcode -- )                  --- display fault
    SWITCH                                       --- what fault ?
-     --- dp WLSFT DSTN2  FONA.SEND                    --- Send this sms via FONA.fth, water level sensor fault text
      WLLF case  PRINT" Water too low " BREAK
      WLHF case  PRINT" Water too high " BREAK
      WLSF case  PRINT" Water sensor zero value " BREAK
      SENF C@ case  PRINT" Water sensor runtime fault value " BREAK
      PRINT" Halt, other fault "  SWITCH@ .
+;
+
+{ flashes the fault light or buzzer with a timer }
+pub FAULTLIGHT
+    lightflag @ FALSE =       --- fault light already on and txts sent ? 
+    IF
+        A DUTY *alarm APIN    --- beeper at 5HZ
+        5 HZ  
+        B DUTY *rled APIN     --- led at 7HZ
+        7 HZ  
+
+        TRUE lightflag !      --- set the one time flag for this routine
+       
+        ---  append to log and send txt
+        appendlog  .DT ." Fault Code: " LSTF C@ showfault CR  ." Sending TXTs " CR closelog    --- set log entry for fault
+        LSTF C@
+        SWITCH                                       --- what fault ?
+          WLLF case  WLLFT DSTN FONA.SEND BREAK     --- send the appropriate text
+          WLHF case  WLHFT DSTN FONA.SEND BREAK
+          WLSF case  WLSFT DSTN FONA.SEND BREAK
+          SENF C@ case  WLSFT DSTN FONA.SEND BREAK
+          WLSFT DSTN FONA.SEND 
+    THEN
 ;
 
 { reset the system from DS3232 SRAM saved parameters }
@@ -647,6 +658,7 @@ pub doit
         IF                                            --- check for halt or fault code
             ALLSTOP                                   --- stop everything
             TRUE fflag !                              --- turn on fault lights, trips the IF next time around
+            appendlog .DT ." Fault " CR .GTL CR closelog            --- log the system init
             LOG? IF 
 	      CR .TIME PRINT"  System Halted"	      --- system halted
               CR PRINT" Last Fault "
@@ -687,7 +699,7 @@ pub sysinit  ( -- )
     CR PRINT" Mounting SD Card " CR 
     mount
     1 second 
-   --- dp FONA.GO             --- start the FONA RX task and init FONA
+    FONA.GO             --- start the FONA RX task and init FONA
     appendlog .DT ."  System Init" CR  closelog            --- log the system init
 ;
 
@@ -698,7 +710,7 @@ pub stopit
     ALLSTOP                                       --- turn everything off
     !POLLS                                        --- disable keypoll calling nstps
     appendlog .DT ."  System Stop" CR  closelog   --- log this
-   --- dp FONA.STOP                                     --- stop FONA from FONA.fth
+    FONA.STOP                                     --- stop FONA from FONA.fth
 ;
 
 { writes 0 to lastkey and then write backspace to KEY to erase input from terminal }
@@ -729,11 +741,23 @@ pub nstps
     THEN
  
     LOG?  IF
-      --- dp FONA.READ                      --- read FONA output to the console from FONA.fthA
+      FONA.READ                      --- read FONA output to the console from FONA.fthA
     THEN
 ;
 
-    
+
+
+{ ?? Display Console Help  }
+pub ??
+  CR
+  PRINT" CTRL Q =  stop the system " CR
+  PRINT" CTRL S =  show params " CR
+  PRINT" CTRL R =  reset the system from stored params " CR
+  PRINT" CTRL L =  turn console logging on " CR
+  PRINT" CTRL K =  turn console logging off " CR
+
+;
+
 { Start the system }
 pub startit
     !!SP                            --- Init data stack with $DEADBEEF  sanity check
@@ -788,3 +812,5 @@ Tank Level  0
 ]~
 END
 ?BACKUP
+
+
