@@ -2,14 +2,14 @@
 { *************** current breadboard system pins ****************** }
 #P0                                     --- mSDA  secondary i2c for psi sensor
 #P1                                     --- mSCL  "
-#P2                                     --- RS485 direction TE /RE
+#P2                                     --- RS485 direction TE /RE  TEMP FONA #P2 == TX     my pin, device RX 
 #P14  *reset                            --- reset pin input  production either 18 or 19 
 #P15  *alarm                            --- alarm pin production either 18 or 19
 #P16  *circ                             ——- SSR Ch1
 #P17  *ebbp                             ——- SSR Ch2
 #P18  *flowp                            ——- SSR Ch3
 #P19  *lights                           ——- SSR Ch4
-#P20				       --- RS485 RX/TX
+#P20				       --- RS485 RX/TX  TEMP FONA #P20 == RX my pin, device TX 
 #P21  			   	       --- LED GREEN
 #P22 				       --- LED RED
 
