@@ -107,7 +107,7 @@ pub .TASKS ( -- \ List tasks )
 4 == WLLF            ---  water level low fault,   did it all leak out
 
 { --- static fault reporting strings for FONA module --- }
-" 3605454869" $20 STRING DSTN                       ---  primary fault telco
+" 3605453869" $20 STRING DSTN                       ---  primary fault telco
 " 3603595754" $20 STRING DSTN2                      ---  secondary
 " water low fault" $20 STRING WLLFT                 ---  water low level fault text
 " water high fault" $20 STRING WLHFT                ---  water high level fault text
