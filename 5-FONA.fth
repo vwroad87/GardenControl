@@ -22,16 +22,16 @@ TACHYON
 \  dp  20160909-0930 v0.7  added start stop routines:  gofona stopfona to control the RX task FONA.TASK
 \  dp  20160909-0930 v0.8  minor bug fix
 \  dp  20160910-2330 v1.0  rewrote controlling words in object syntax and documented usage, fixed FONA.READ dropped nulls
-
+\  dp, kty 20161005-1700 v1.0a PINS set for P555 board
 
 FORGET FONA.fth
 
-pub FONA.fth   PRINT" FONA Test V1.0 dp  20160910-2330 " ;
+pub FONA.fth   PRINT" FONA Test V1.0a  20161005-1700 " ;
 
 --- setup, pins
 #9600 SERBAUD                           --- nice and slow 
-#P2 == TX                               --- my pin, device RX
-#P20 == RX                              --- my pin, device TX
+#P7 == TX                               --- my pin, device RX
+#P8 == RX                               --- my pin, device TX
 --- vars
 LONG ?fona                              --- task flag
 

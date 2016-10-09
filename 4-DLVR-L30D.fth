@@ -17,6 +17,7 @@
 \ 160823 dp  okay complete rewrite to remove this module as a task and it is used in keypoll to read,
 \ accumulate, error check and condition data for use in PSI@ word. V1.2 
 \ 160830 dp  Peter found a bug, I was sending an ACK on the 4th byte instead of NAK, this routine is now called by a timer in GardenControl.fth
+\ 161008 dp,kty  Divide pressure by 2 for differential sensors
 \ driver must protect from these errors
 \	Status 0 = good data *** OR *** sensor grounded out = Status 0 reading -8192
 \	Status 1 = resevered bad data
@@ -28,7 +29,7 @@
  
 TACHYON
 FORGET DLVR-L30D.fth
-pub    DLVR-L30D.fth  ." DLVR-L30D PSI Sensor v1.3 160830.0930" ;
+pub    DLVR-L30D.fth  ." DLVR-L30D PSI Sensor v1.4 1601008.1830" ;
  
 DECIMAL
 [~ 
@@ -100,7 +101,7 @@ LONG DPSI, DSTATUS, DTEMP, DPAVG, DRETRY	--- result variables
 pub PSI.GET
       DLVR@
       RESULT @ status AND #30 >> DSTATUS !
-      RESULT @ psi AND #16 >> #8192 - DPSI !
+      RESULT @ psi AND #16 >> #8192  -  1 SHR DPSI !
       RESULT @ temp AND 5 >> DTEMP !
       
       DSTATUS @  0= IF

@@ -21,7 +21,7 @@
 \   dp 160906         Fixed Stack Bug in ?switchlog   -FERASE needs file handle not string name 1.4
 \   dp 160908         Moved ?switchlog and shut off ebb and flow pumps during log change,  15 seconds 1.5
 \   dp 161005         Integrated FONA mondule,  added ?? for display help, Changed to DSTN, Keith's cell number
-
+\   dp, kty 161005    made pin assignments for live and dev board
 \    testing testing testing logging  CHANGE THOSE PIN ASSIGNMENTS
 
 \                     
@@ -39,7 +39,7 @@ IFNDEF FONA.fth
 }
 
 FORGET GARDENCONTROL.fth
-pub  GARDENCONTROL.fth   PRINT" Garden Control PBJ-8 160908 1100 V1.5          " ;
+pub  GARDENCONTROL.fth   PRINT" Garden Control PBJ-8 161005 1700 V1.6          " ;
 
 
 \ : TP		PRINT" <TP @" DEPTH . PRINT" >" ;
@@ -84,7 +84,7 @@ pub .TASKS ( -- \ List tasks )
 
 }
 
-{ ***** equipment I/O assignments ********* }
+{ ***** equipment I/O assignments dev board *********
 --- pins named with * prefix to indicate PIN CONSTANT plus avoid conflicts with upper/lower cases
 #P18 == *flow		--- flow pump     MOVE TO 14 
 #P17 == *ebb		--- ebb pump    
@@ -92,6 +92,18 @@ pub .TASKS ( -- \ List tasks )
 #P16 == *circ		--- circulation pump
 #P15 == *alarm		--- alarm pin for FAULTLIGHT  MOVE TO 19 
 #P14 == *reset		--- reset pin input  MOVE TO 18 
+#P22 == *rled           --- red led pin
+#P21 == *gled           --- grn led pin
+}
+
+{ ***** equipment I/O assignments live board ********* }
+--- pins named with * prefix to indicate PIN CONSTANT plus avoid conflicts with upper/lower cases
+#P14 == *flow		--- flow pump
+#P15 == *ebb		--- ebb pump
+#P16 == *lights		--- uh guess what?
+#P17 == *circ		--- circulation pump
+#P18 == *alarm		--- alarm pin for FAULTLIGHT
+#P3 == *reset		--- reset pin input
 #P22 == *rled           --- red led pin
 #P21 == *gled           --- grn led pin
 
@@ -767,6 +779,12 @@ pub startit
     0 LSTF C!                       --- reset Last Fault code to zero
     ' nstps keypoll W!              --- set nstps to get called by keypoll
 ;
+
+--- *********************** ----
+AUTORUN startit            --- auto-start the system
+--- *********************** ----
+
+
 
 
 
