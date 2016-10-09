@@ -769,6 +769,11 @@ pub ??
   PRINT" CTRL K =  turn console logging off " CR
 
 ;
+ 
+{ this word sets the offset in the DLVR-L30D.fth module var called calval }
+pub CAL ( value -- )
+    calval !
+;
 
 { Start the system }
 pub startit
