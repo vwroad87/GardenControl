@@ -94,6 +94,7 @@ pub DLVR@ (  --  )            \ sets the RESULT long
 \  TASK Allocations 
 #16 LONGS psibuff				--- circ buffer allocation
 BYTE psiptr					--- buffer pointer
+long calval                                     --- set this in GardenControl.fth for sensor calibration/offset
 long PSIFLT					--- fault code result
 LONG DPSI, DSTATUS, DTEMP, DPAVG, DRETRY	--- result variables
  
@@ -101,7 +102,7 @@ LONG DPSI, DSTATUS, DTEMP, DPAVG, DRETRY	--- result variables
 pub PSI.GET
       DLVR@
       RESULT @ status AND #30 >> DSTATUS !
-      RESULT @ psi AND #16 >> #8192  -  1 SHR DPSI !
+      RESULT @ psi AND #16 >> #8192  -  1 SHR calval @ + DPSI !
       RESULT @ temp AND 5 >> DTEMP !
       
       DSTATUS @  0= IF
