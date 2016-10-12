@@ -22,6 +22,7 @@
 \   dp 160908         Moved ?switchlog and shut off ebb and flow pumps during log change,  15 seconds 1.5
 \   dp 161005         Integrated FONA mondule,  added ?? for display help, Changed to DSTN, Keith's cell number
 \   dp, kty 161005    made pin assignments for live and dev board
+\   dp, kty 161105    commented out logging of flow and ebb pumps on and level, overflowing sd logs
 \    testing testing testing logging  CHANGE THOSE PIN ASSIGNMENTS
 
 \                     
@@ -39,7 +40,7 @@ IFNDEF FONA.fth
 }
 
 FORGET GARDENCONTROL.fth
-pub  GARDENCONTROL.fth   PRINT" Garden Control PBJ-8 161005 1700 V1.6          " ;
+pub  GARDENCONTROL.fth   PRINT" Garden Control PBJ-8 161105 1900 V1.7          " ;
 
 
 \ : TP		PRINT" <TP @" DEPTH . PRINT" >" ;
@@ -484,7 +485,7 @@ pub EBBLOW
 	IF
           ON EBBPUMP                                                       --- ebb pump back on
           FALSE edsflag !                                                  --- reset ebb dwell timer flag
-          appendlog  .DT ."  Ebb Pump On, Tank Level: " .GTL closelog      --- log pump on
+          --- dp appendlog  .DT ."  Ebb Pump On, Tank Level: " .GTL closelog      --- log pump on
 	  LOG? IF CR .TIME PRINT"  EBB Water Low, filling "  CR .GTL THEN
 	ELSE
             LOG? IF CR .TIME PRINT"  EBB Water Low, Dwell TIme Left  " ebbdwell @ 1000 U/ . CR .GTL THEN
@@ -524,7 +525,7 @@ pub FLOWFULL
 	IF
           ON FLOWPUMP                                                        --- flow pump back on
           FALSE fdsflag !                                                    --- reset flow dwell timer flag  
-          appendlog  .DT ."  Flow Pump On, Tank Level: " .GTL closelog       --- log pump on
+          --- dp appendlog  .DT ."  Flow Pump On, Tank Level: " .GTL closelog       --- log pump on
           LOG? IF CR .TIME PRINT"  Flow Water High, Empyting " CR .GTL THEN
 	ELSE
 	  LOG? IF CR .TIME PRINT"  FLOW Water High, Dwell TIme Left " flowdwell @ 1000 U/ . CR .GTL THEN
