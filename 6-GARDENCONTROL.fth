@@ -140,7 +140,8 @@ LONG tanklevel       --- current tank level
 TIMER statetmr       --- timer for pacing of state machine
 TIMER dlvrtmr        --- timer for pacing of calls to PSI.GET from DLVR-L30D.fth module
 TIMER  ebbdwell      --- timer to rest at ebb dwell until filling tank to ebb max level
-TIMER  flowdwell     --- timer to rest at flow dwell until emptying tank to flow min level  
+TIMER  flowdwell     --- timer to rest at flow dwell until emptying tank to flow min level 
+LONG  exclude        --- exclusive flag to block serial web access while internal logging is happening 
 
 { helpers for led/s colors }
 pub GLED ( on/off -- )
@@ -161,8 +162,13 @@ pub TLED ( ledpin -- )
  DUP HIGH? IF 0 ELSE 1 THEN SWAP PIN! 
 ;
 
-pub LOG? ( -- flag ) --- return logging flag on or off
+pub LOG? ( -- flag ) --- return logging flag on or off set exclusive flag
   _log @
+  TRUE exclude !
+;
+
+pub LOGend  ( -- )  --- unset exclusive flag
+  FALSE exclude !
 ;
 
 pub g==   ( -- )    --- turn data logging to the screen on
@@ -385,7 +391,7 @@ pub .TLS ( -- print time left in this state  )
 { equipment action words  }
 pub FLOWPUMP  ( ON / OFF -- message to terminal )
     DUP *flow PIN!
-    LOG? IF CR .TIME PRINT"  FLOW PUMP  " DUP .ON/OFF .GTL THEN
+    LOG? IF CR .TIME PRINT"  FLOW PUMP  " DUP .ON/OFF .GTL LOGend THEN
     DROP    --- if logging is off we need to drop 
 ;
 
@@ -397,7 +403,7 @@ pub .FLOWPUMP  ( -- terminal message on or off )
 { control ebbpump }
 pub EBBPUMP  ( ON / OFF -- message to terminal )
     DUP *ebb PIN!      --- set the pump on or off
-    LOG? IF CR .TIME PRINT"  EBB PUMP " DUP .ON/OFF .GTL  THEN
+    LOG? IF CR .TIME PRINT"  EBB PUMP " DUP .ON/OFF .GTL LOGend THEN
     DROP    --- if logging is off we need to drop 
 ;
 
@@ -409,14 +415,14 @@ pub .EBBPUMP  ( -- terminal message on or off )
 { control circulation pump }
 pub CIRCPUMP  ( ON / OFF -- message to terminal )
     DUP *circ PIN!
-    LOG? IF .TIME PRINT"  CIRC PUMP " DUP .ON/OFF .GTL THEN
+    LOG? IF .TIME PRINT"  CIRC PUMP " DUP .ON/OFF .GTL LOGend THEN
     DROP    --- if logging is off we need to drop 
 ;
 
 { control lights }
 pub LIGHTS  ( ON / OFF -- message to terminal )
     DUP *lights PIN!      
-    LOG? IF .TIME PRINT"  LIGHTS " DUP .ON/OFF THEN
+    LOG? IF .TIME PRINT"  LIGHTS " DUP .ON/OFF LOGend THEN
     DROP    --- if logging is off we need to drop 
 ;
 
@@ -465,6 +471,7 @@ pub NEXTSTATE   ( -- )
       CR .TIME PRINT" State Change to " 
         DAY? IF PRINT" day " ELSE PRINT" night " THEN
       ebb? .ebb/flow .TLS .GTL
+      LOGend
     THEN
 ;
     
@@ -475,7 +482,7 @@ pub EBBFULL
         IF
             TRUE edsflag !                         --- reset ebb the dwell timer flag
             EDWL C@  #60000 * ebbdwell   TIMEOUT   --- set the dwell timer
-            LOG? IF CR .TIME PRINT"  Reset EBB Dwell Timer Set Pump OFF " CR .GTL THEN
+            LOG? IF CR .TIME PRINT"  Reset EBB Dwell Timer Set Pump OFF " CR .GTL LOGend THEN
         THEN
 ;
 
@@ -486,15 +493,15 @@ pub EBBLOW
           ON EBBPUMP                                                       --- ebb pump back on
           FALSE edsflag !                                                  --- reset ebb dwell timer flag
           --- dp appendlog  .DT ."  Ebb Pump On, Tank Level: " .GTL closelog      --- log pump on
-	  LOG? IF CR .TIME PRINT"  EBB Water Low, filling "  CR .GTL THEN
+	  LOG? IF CR .TIME PRINT"  EBB Water Low, filling "  CR .GTL LOGend THEN
 	ELSE
-            LOG? IF CR .TIME PRINT"  EBB Water Low, Dwell TIme Left  " ebbdwell @ 1000 U/ . CR .GTL THEN
+            LOG? IF CR .TIME PRINT"  EBB Water Low, Dwell TIme Left  " ebbdwell @ 1000 U/ . CR .GTL LOGend THEN
 	THEN
 ;
 
 { when ebb level is within set points display this message }
 pub EBBOK
-	LOG? IF CR  PRINT" EBB Water Nominal "  CR .GTL .EBBPUMP .TLS THEN
+	LOG? IF CR  PRINT" EBB Water Nominal "  CR .GTL .EBBPUMP .TLS LOGend THEN
 ;
 
 { run the ebb cycle }
@@ -515,7 +522,7 @@ pub FLOWLOW
         IF
            TRUE fdsflag !                                     --- reset the dwell flag
            FDWL C@  #60000 * flowdwell TIMEOUT                --- set the dwell timer
-            LOG? IF CR .TIME PRINT"  Reset Flow Dwell Timer Reset Pump OFF " CR .GTL THEN
+            LOG? IF CR .TIME PRINT"  Reset Flow Dwell Timer Reset Pump OFF " CR .GTL LOGend THEN
         THEN
 ;
 
@@ -526,15 +533,15 @@ pub FLOWFULL
           ON FLOWPUMP                                                        --- flow pump back on
           FALSE fdsflag !                                                    --- reset flow dwell timer flag  
           --- dp appendlog  .DT ."  Flow Pump On, Tank Level: " .GTL closelog       --- log pump on
-          LOG? IF CR .TIME PRINT"  Flow Water High, Empyting " CR .GTL THEN
+          LOG? IF CR .TIME PRINT"  Flow Water High, Empyting " CR .GTL LOGend THEN
 	ELSE
-	  LOG? IF CR .TIME PRINT"  FLOW Water High, Dwell TIme Left " flowdwell @ 1000 U/ . CR .GTL THEN
+	  LOG? IF CR .TIME PRINT"  FLOW Water High, Dwell TIme Left " flowdwell @ 1000 U/ . CR .GTL LOGend THEN
         THEN
 ;
 
 { when flow level is within set points display this message }
 pub FLOWOK
-	LOG? IF CR  PRINT" Flow Water Nominal " CR .FLOWPUMP .GTL .TLS THEN
+	LOG? IF CR  PRINT" Flow Water Nominal " CR .FLOWPUMP .GTL .TLS LOGend THEN
 ;
 
 { run the flow cycle }
@@ -556,7 +563,7 @@ pub REGULARLY
         LSTT C@ 1- 0 <=        --- calc last state running time on minute tick check for time out
         IF
             NEXTSTATE          --- change state  reload LSTT/LSTS with correct day night value and state
-            LOG? IF CR   .TIME PRINT"  State Changed to " LSTS C@  1 = .ebb/flow THEN
+            LOG? IF CR   .TIME PRINT"  State Changed to " LSTS C@  1 = .ebb/flow LOGend THEN
         ELSE  
             LSTT C--           --- still in this state just write LSTT, decrimented minute
             --- LOG? IF CR .TIME PRINT"  Minute Change " THEN
@@ -566,9 +573,9 @@ pub REGULARLY
 { run this in between minute interval }
 pub CONSTANTLY
 	ebb? IF 
-	  LOG? IF CR .TIME PRINT"  Running State  Ebb " .TLS THEN EBB     
+	  LOG? IF CR .TIME PRINT"  Running State  Ebb " .TLS THEN LOGend EBB     
 	ELSE
-          LOG? IF CR .TIME PRINT"  Running State Flow " .TLS THEN FLOW
+          LOG? IF CR .TIME PRINT"  Running State Flow " .TLS THEN LOGend FLOW
         THEN     
 ;
 
@@ -640,21 +647,23 @@ pub FAULTLIGHT
 
 { reset the system from DS3232 SRAM saved parameters }
 pub ?Reset
+    FALSE exclude !        --- reset serial exclusive flag
 	*reset LOW? 0EXIT      --- button is active low
 pub SysReset
 	0 LSTF C!              --- reset Last Fault code to zero
-        FALSE fflag !          --- reset fault flag
-        FALSE lightflag !      --- reset the fault light flag
-        0 PSIFLT !             --- reset fault code from DLVR-L30D.fth PSI Sensor Driver
-        A MUTE B MUTE          --- turn alarms 
-        ON CIRCPUMP            --- start the circulation pump
-        DAY? LIGHTS            --- is it day?
-        LOG? IF 
+    FALSE fflag !          --- reset fault flag
+    FALSE lightflag !      --- reset the fault light flag
+    0 PSIFLT !             --- reset fault code from DLVR-L30D.fth PSI Sensor Driver
+    A MUTE B MUTE          --- turn alarms 
+    ON CIRCPUMP            --- start the circulation pump
+    DAY? LIGHTS            --- is it day?
+    LOG? IF 
 	  CR .TIME  PRINT"  System Reset "
-          CR PRINT"  Restoring Running Parameters from Clock Memory " CR
-          .GTL CR              --- print tank level
-        THEN
-        appendlog .DT ."  System Reset" CR .GTL CR closelog            --- log the system init
+      CR PRINT"  Restoring Running Parameters from Clock Memory " CR
+      .GTL CR              --- print tank level
+      LOGend
+    THEN
+    appendlog .DT ."  System Reset" CR .GTL CR closelog            --- log the system init
 ;    
 
 { this controls error checking, system recovery from system pin depress
@@ -664,7 +673,7 @@ pub doit
     fflag @
     IF  
         FAULTLIGHT                                   --- turn on the fault light
-        LOG? IF CR .TIME PRINT"   Clear Fault and Press Reset to continue" CR .GTL THEN
+        LOG? IF CR .TIME PRINT"   Clear Fault and Press Reset to continue" CR .GTL LOGend THEN
         ?Reset       
     ELSE  
         HALT? LSTF?  OR   
@@ -676,8 +685,9 @@ pub doit
 	      CR .TIME PRINT"  System Halted"	      --- system halted
               CR PRINT" Last Fault "
               CR PRINT" Sending SMS "
+              LOGend
             THEN
-            LOG? IF LSTF C@  showfault THEN           --- call the word to show fault text       
+            LOG? IF LSTF C@  showfault LOGend THEN           --- call the word to show fault text       
                
              
         ELSE
@@ -688,6 +698,7 @@ pub doit
 
 {  initialize the system  }
 pub sysinit  ( -- )  
+    FALSE exclude !     --- set the serial exclusive flag to false
     CR PRINT" Setting Time from DS3231 " CR
     .DT                 --- set the kernel rtc from the DS3231  
     CR PRINT" Restoring System Running Parameters from DS3231 EEPROM "
@@ -755,6 +766,7 @@ pub nstps
  
     LOG?  IF
       FONA.READ                      --- read FONA output to the console from FONA.fthA
+      LOGend
     THEN
 ;
 
