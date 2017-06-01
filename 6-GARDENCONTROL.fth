@@ -25,6 +25,7 @@
 \   dp, kty 161105    commented out logging of flow and ebb pumps on and level, overflowing sd logs
 \    testing testing testing logging  CHANGE THOSE PIN ASSIGNMENTS
 
+\   dp, kty 170601   save pressure sensor calval ( calibration value DLVR-L30D.fth ) in EEPROM
 \                     
 TACHYON
 [~
@@ -40,7 +41,7 @@ IFNDEF FONA.fth
 }
 
 FORGET GARDENCONTROL.fth
-pub  GARDENCONTROL.fth   PRINT" Garden Control PBJ-8 161105 1900 V1.7          " ;
+pub  GARDENCONTROL.fth   PRINT" Garden Control PBJ-8 170601 1300 V1.8          " ;
 
 
 \ : TP		PRINT" <TP @" DEPTH . PRINT" >" ;
@@ -142,6 +143,10 @@ TIMER dlvrtmr        --- timer for pacing of calls to PSI.GET from DLVR-L30D.fth
 TIMER  ebbdwell      --- timer to rest at ebb dwell until filling tank to ebb max level
 TIMER  flowdwell     --- timer to rest at flow dwell until emptying tank to flow min level 
 LONG  exclude        --- exclusive flag to block serial web access while internal logging is happening 
+
+{ save calval, runtime pressure sensor calibration value in EEPROM }
+$FFF4  ORG       --- save at end of eeprom
+4 DS @calval
 
 { helpers for led/s colors }
 pub GLED ( on/off -- )
@@ -698,6 +703,7 @@ pub doit
 
 {  initialize the system  }
 pub sysinit  ( -- )  
+    @calval E@  calval !   --- read the calval from EEPROM and set runtime long
     FALSE exclude !     --- set the serial exclusive flag to false
     CR PRINT" Setting Time from DS3231 " CR
     .DT                 --- set the kernel rtc from the DS3231  
@@ -783,10 +789,14 @@ pub ??
 
 ;
  
+
 { this word sets the offset in the DLVR-L30D.fth module var called calval }
 pub CAL ( value -- )
-    calval !
+  DUP  
+  calval !        --- save to runtime long
+  @calval E!      --- save to upper eeprom
 ;
+
 
 { Start the system }
 pub startit
